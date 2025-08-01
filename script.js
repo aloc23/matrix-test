@@ -935,6 +935,12 @@ function renderRoiSection() {
     let idx = investmentWeek + i;
     cashflowDates[i] = weekStartDates[idx] || null;
   }
+  // --- ROI Suggestions Integration with new HTML ---
+document.getElementById('showSuggestedRepaymentsBtn').addEventListener('click', updateSuggestedRepaymentsOverlay);
+document.getElementById('roiTargetIrrInput').addEventListener('change', updateSuggestedRepaymentsOverlay);
+
+// Also call updateSuggestedRepaymentsOverlay once on ROI tab load for initial display.
+updateSuggestedRepaymentsOverlay();
 
   function npv(rate, cashflows) {
     if (!cashflows.length) return 0;
@@ -1204,6 +1210,12 @@ function updateSuggestedRepaymentsOverlay() {
   const expenditureArr = getExpenditureArr();
   // Use arrays aligned with weekLabels:
   const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
+  function updateSuggestedRepaymentsOverlay() {
+  // ...existing code...
+  const targetIRRInput = document.getElementById('roiTargetIrrInput');
+  const targetIRR = targetIRRInput ? (parseFloat(targetIRRInput.value) / 100) : 0.12;
+  // ...rest of function...
+}
 
   // Inputs from your state/UI:
   const investmentAmount = roiInvestment;
