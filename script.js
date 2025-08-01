@@ -1204,17 +1204,33 @@ function suggestOptimalRepayments({
  * Call this to update the suggested repayments overlay in the ROI/Payback Table UI.
  * Use after user moves IRR/NPV slider or upon change in mapping/data.
  */
-function updateSuggestedRepaymentsOverlay() {
-  // Build cashflow array: income - expenditure for each week (filtered for active weeks)
-  const incomeArr = getIncomeArr();
-  const expenditureArr = getExpenditureArr();
-  // Use arrays aligned with weekLabels:
-  const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
-  function updateSuggestedRepaymentsOverlay() {
-  // ...existing code...
-  const targetIRRInput = document.getElementById('roiTargetIrrInput');
-  const targetIRR = targetIRRInput ? (parseFloat(targetIRRInput.value) / 100) : 0.12;
-  // ...rest of function...
+function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
+  let html = '';
+  for (let i = 0; i < weekLabels.length; i++) {
+    const actual = repayments[i] || 0;
+    const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : null;
+    let cellHtml = '';
+    if (suggested !== null && Math.abs(suggested - actual) < 0.01 && suggested !== 0) {
+      cellHtml = `<span style="color:#219653; font-weight:bold;">€${actual.toLocaleString()}</span>`;
+    } else if (suggested !== null && suggested !== 0) {
+      cellHtml = `<span style="color:#219653; font-weight:bold;">€${suggested.toLocaleString()}</span>`;
+      if (actual > 0) {
+        cellHtml += `<br><span style="color:#888;font-size:90%;">(Actual: €${actual.toLocaleString()})</span>`;
+      }
+    } else if (actual > 0) {
+      cellHtml = `€${actual.toLocaleString()}`;
+    } else {
+      cellHtml = '';
+    }
+    html += `
+      <tr>
+        <td>${weekLabels[i]}</td>
+        <td>${weekStartDates && weekStartDates[i] ? weekStartDates[i].toLocaleDateString('en-GB') : '-'}</td>
+        <td style="text-align:right;">${cellHtml}</td>
+      </tr>
+    `;
+  }
+  document.getElementById(tableBodyId).innerHTML = html;
 }
 
   // Inputs from your state/UI:
@@ -1235,6 +1251,27 @@ function updateSuggestedRepaymentsOverlay() {
     openingBalance: opening,
     targetIRR
   });
+  // Example: gather variables from your existing code:
+const repayments = getRepaymentArr();
+const weekLabels = window.weekLabels;
+const weekStartDates = window.weekStartDates;
+const { suggestedRepayments } = suggestOptimalRepayments({
+  investmentAmount: roiInvestment,
+  investmentWeekIndex,
+  weekLabels,
+  cashflow,
+  openingBalance,
+  targetIRR
+});
+
+// Now render:
+renderPaybackTableRows({
+  repayments,
+  suggestedRepayments,
+  weekLabels,
+  weekStartDates,
+  tableBodyId: 'roiPaybackTableBody'
+});
 
   // Overlay: Example for table DOM update (pseudo-code, adapt to your UI rendering)
   // For each week: if suggestedRepayments[i] !== null, highlight cell and show value
