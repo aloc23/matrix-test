@@ -1136,169 +1136,132 @@ document.getElementById('refreshRoiBtn').addEventListener('click', renderRoiSect
 document.getElementById('investmentWeek').addEventListener('change', renderRoiSection);
   
 function suggestOptimalRepayments({
-  investmentAmount,
-  investmentWeekIndex,
-  weekLabels,
-  cashflow,
-  openingBalance,
-  targetIRR
-}) {
-  // 1. Build initial cashflow array (including investment)
-  let cfs = cashflow.slice();
-  cfs[investmentWeekIndex] = (cfs[investmentWeekIndex] || 0) - investmentAmount;
-
-  // 2. Repayment candidate weeks (after investment)
-  let repaymentWeeks = [];
-  for (let i = investmentWeekIndex + 1; i < weekLabels.length; i++) repaymentWeeks.push(i);
-
-  let suggestedRepayments = Array(weekLabels.length).fill(null);
-
-  // Helper: IRR calculation (Newton-Raphson)
-  function computeIRR(cf, guess = 0.1) {
-    let maxIter = 30, tol = 1e-7;
-    let rate = guess;
-    for (let k = 0; k < maxIter; k++) {
-      let npv = 0, d_npv = 0;
-      for (let j = 0; j < cf.length; j++) {
-        npv += cf[j] / Math.pow(1 + rate, j);
-        if (j > 0) d_npv -= j * cf[j] / Math.pow(1 + rate, j + 1);
-      }
-      if (Math.abs(npv) < tol) return rate;
-      if (!isFinite(d_npv) || d_npv === 0) break;
-      rate = rate - npv / d_npv;
-    }
-    return rate;
-  }
-
-  // 3. Greedy algorithm: fill repayments as early as possible, not going negative, try to reach target IRR
-  let totalToRepay = investmentAmount;
-  let simulatedBank = openingBalance;
-  let tempCF = cfs.slice();
-  let repayments = Array(weekLabels.length).fill(0);
-  let remaining = totalToRepay;
-
-  for (let w of repaymentWeeks) {
-    // Max that can be paid this week without negative balance
-    let maxRepay = Math.max(0, simulatedBank + tempCF[w]);
-    let pay = Math.min(maxRepay, remaining);
-    repayments[w] = pay;
-    tempCF[w] -= pay;
-    simulatedBank += tempCF[w];
-    remaining -= pay;
-    if (remaining <= 1e-6) break;
-  }
-
-  // Calculate achieved IRR
-  let cfWithRepayments = cfs.slice();
-  repayments.forEach((amt, idx) => { cfWithRepayments[idx] = (cfWithRepayments[idx] || 0) - amt; });
-  let achievedIRR = computeIRR(cfWithRepayments);
-
-  // Overlay format: null or amount
-  suggestedRepayments = repayments.map(r => r > 0 ? r : null);
-
-  return { suggestedRepayments, achievedIRR };
-}
-
-// -------------------- ROI Suggestions Integration --------------------
-/**
- * Call this to update the suggested repayments overlay in the ROI/Payback Table UI.
- * Use after user moves IRR/NPV slider or upon change in mapping/data.
- */
-function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
-  let html = '';
-  for (let i = 0; i < weekLabels.length; i++) {
-    const actual = repayments[i] || 0;
-    const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : null;
-    let cellHtml = '';
-    if (suggested !== null && Math.abs(suggested - actual) < 0.01 && suggested !== 0) {
-      cellHtml = `<span style="color:#219653; font-weight:bold;">€${actual.toLocaleString()}</span>`;
-    } else if (suggested !== null && suggested !== 0) {
-      cellHtml = `<span style="color:#219653; font-weight:bold;">€${suggested.toLocaleString()}</span>`;
-      if (actual > 0) {
-        cellHtml += `<br><span style="color:#888;font-size:90%;">(Actual: €${actual.toLocaleString()})</span>`;
-      }
-    } else if (actual > 0) {
-      cellHtml = `€${actual.toLocaleString()}`;
-    } else {
-      cellHtml = '';
-    }
-    html += `
-      <tr>
-        <td>${weekLabels[i]}</td>
-        <td>${weekStartDates && weekStartDates[i] ? weekStartDates[i].toLocaleDateString('en-GB') : '-'}</td>
-        <td style="text-align:right;">${cellHtml}</td>
-      </tr>
-    `;
-  }
-  document.getElementById(tableBodyId).innerHTML = html;
-}
-
-  // Inputs from your state/UI:
-  const investmentAmount = roiInvestment;
-  const investmentWeekIndexInput = document.getElementById('investmentWeek');
-  const investmentWeekIndex = investmentWeekIndexInput ? parseInt(investmentWeekIndexInput.value, 10) : 0;
-  const opening = openingBalance;
-  // Get from slider or UI:
-  const targetIRRInput = document.getElementById('roiTargetIrrSlider');
-  const targetIRR = targetIRRInput ? (parseFloat(targetIRRInput.value) / 100) : 0.12; // fallback to 12% if not set
-
-  // Compute best-case scenario
-  const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
     investmentAmount,
     investmentWeekIndex,
     weekLabels,
     cashflow,
-    openingBalance: opening,
+    openingBalance,
     targetIRR
-  });
-  // Example: gather variables from your existing code:
-const repayments = getRepaymentArr();
-const weekLabels = window.weekLabels;
-const weekStartDates = window.weekStartDates;
-const { suggestedRepayments } = suggestOptimalRepayments({
-  investmentAmount: roiInvestment,
-  investmentWeekIndex,
-  weekLabels,
-  cashflow,
-  openingBalance,
-  targetIRR
-});
+  }) {
+    let cfs = cashflow.slice();
+    cfs[investmentWeekIndex] = (cfs[investmentWeekIndex] || 0) - investmentAmount;
 
-// Now render:
-renderPaybackTableRows({
-  repayments,
-  suggestedRepayments,
-  weekLabels,
-  weekStartDates,
-  tableBodyId: 'roiPaybackTableBody'
-});
+    let repaymentWeeks = [];
+    for (let i = investmentWeekIndex + 1; i < weekLabels.length; i++) repaymentWeeks.push(i);
 
-  // Overlay: Example for table DOM update (pseudo-code, adapt to your UI rendering)
-  // For each week: if suggestedRepayments[i] !== null, highlight cell and show value
-  // Show achievedIRR (as percentage) in the UI as well
-  // Example:
-  // for (let i = 0; i < weekLabels.length; i++) {
-  //   let cell = getPaybackTableCellForWeek(i);
-  //   if (suggestedRepayments[i] !== null) {
-  //     cell.classList.add('suggested-repayment-highlight');
-  //     cell.textContent = '€' + Math.round(suggestedRepayments[i]).toLocaleString();
-  //   }
-  // }
+    let suggestedRepayments = Array(weekLabels.length).fill(null);
 
-  // Example: update display field
-  const irrDisplay = document.getElementById('suggestedIrrResult');
-  if (irrDisplay)
-    irrDisplay.innerHTML = `Achievable IRR: <b>${(achievedIRR*100).toFixed(2)}%</b> ${Math.abs(achievedIRR - targetIRR) < 0.005 ? '<span class="badge badge-success">Target Met</span>' : '<span class="badge badge-warning">Best possible</span>'}`;
-}
+    function computeIRR(cf, guess = 0.1) {
+      let maxIter = 30, tol = 1e-7;
+      let rate = guess;
+      for (let k = 0; k < maxIter; k++) {
+        let npv = 0, d_npv = 0;
+        for (let j = 0; j < cf.length; j++) {
+          npv += cf[j] / Math.pow(1 + rate, j);
+          if (j > 0) d_npv -= j * cf[j] / Math.pow(1 + rate, j + 1);
+        }
+        if (Math.abs(npv) < tol) return rate;
+        if (!isFinite(d_npv) || d_npv === 0) break;
+        rate = rate - npv / d_npv;
+      }
+      return rate;
+    }
 
-// -------------------- Wire up event for IRR/NPV slider --------------------
-const roiTargetIrrSlider = document.getElementById('roiTargetIrrSlider');
-if (roiTargetIrrSlider) {
-  roiTargetIrrSlider.addEventListener('input', updateSuggestedRepaymentsOverlay);
-}
+    let totalToRepay = investmentAmount;
+    let simulatedBank = openingBalance;
+    let tempCF = cfs.slice();
+    let repayments = Array(weekLabels.length).fill(0);
+    let remaining = totalToRepay;
 
+    for (let w of repaymentWeeks) {
+      let maxRepay = Math.max(0, simulatedBank + tempCF[w]);
+      let pay = Math.min(maxRepay, remaining);
+      repayments[w] = pay;
+      tempCF[w] -= pay;
+      simulatedBank += tempCF[w];
+      remaining -= pay;
+      if (remaining <= 1e-6) break;
+    }
 
-  // -------------------- Update All Tabs --------------------
+    let cfWithRepayments = cfs.slice();
+    repayments.forEach((amt, idx) => { cfWithRepayments[idx] = (cfWithRepayments[idx] || 0) - amt; });
+    let achievedIRR = computeIRR(cfWithRepayments);
+
+    suggestedRepayments = repayments.map(r => r > 0 ? r : null);
+
+    return { suggestedRepayments, achievedIRR };
+  }
+
+  function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
+    let html = '';
+    for (let i = 0; i < weekLabels.length; i++) {
+      const actual = repayments[i] || 0;
+      const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : null;
+      let cellHtml = '';
+      if (suggested !== null && Math.abs(suggested - actual) < 0.01 && suggested !== 0) {
+        cellHtml = `<span style="color:#219653; font-weight:bold;">€${actual.toLocaleString()}</span>`;
+      } else if (suggested !== null && suggested !== 0) {
+        cellHtml = `<span style="color:#219653; font-weight:bold;">€${suggested.toLocaleString()}</span>`;
+        if (actual > 0) {
+          cellHtml += `<br><span style="color:#888;font-size:90%;">(Actual: €${actual.toLocaleString()})</span>`;
+        }
+      } else if (actual > 0) {
+        cellHtml = `€${actual.toLocaleString()}`;
+      } else {
+        cellHtml = '';
+      }
+      html += `
+        <tr>
+          <td>${weekLabels[i]}</td>
+          <td>${weekStartDates && weekStartDates[i] ? weekStartDates[i].toLocaleDateString('en-GB') : '-'}</td>
+          <td style="text-align:right;">${cellHtml}</td>
+        </tr>
+      `;
+    }
+    document.getElementById(tableBodyId).innerHTML = html;
+  }
+
+  // --- Handler for "Show Suggested Repayments" ---
+  function updateSuggestedRepaymentsOverlay() {
+    const incomeArr = getIncomeArr();
+    const expenditureArr = getExpenditureArr();
+    const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
+    const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
+    const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
+    const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
+      investmentAmount: roiInvestment,
+      investmentWeekIndex,
+      weekLabels,
+      cashflow,
+      openingBalance,
+      targetIRR
+    });
+
+    const repayments = getRepaymentArr();
+
+    renderPaybackTableRows({
+      repayments,
+      suggestedRepayments,
+      weekLabels,
+      weekStartDates,
+      tableBodyId: 'roiPaybackTableBody'
+    });
+
+    const irrDisplay = document.getElementById('suggestedIrrResult');
+    if (irrDisplay)
+      irrDisplay.innerHTML = `Achievable IRR: <b>${(achievedIRR*100).toFixed(2)}%</b> ${Math.abs(achievedIRR - targetIRR) < 0.005 ? '<span class="badge badge-success">Target Met</span>' : '<span class="badge badge-warning">Best possible</span>'}`;
+  }
+
+  // --- Wire up to button/input ---
+  const showBtn = document.getElementById('showSuggestedRepaymentsBtn');
+  if (showBtn) showBtn.addEventListener('click', updateSuggestedRepaymentsOverlay);
+  const irrInput = document.getElementById('roiTargetIrrInput');
+  if (irrInput) irrInput.addEventListener('change', updateSuggestedRepaymentsOverlay);
+
+  // --- Optionally: render suggestions on initial load for convenience ---
+  updateSuggestedRepaymentsOverlay();
+
+  // ... rest of your script (updateAllTabs, etc) ...
   function updateAllTabs() {
     renderRepaymentRows();
     updateLoanSummary();
@@ -1307,6 +1270,8 @@ if (roiTargetIrrSlider) {
     renderSummaryTab();
     renderRoiSection();
     renderTornadoChart();
+    // Optionally show suggestions each time:
+    updateSuggestedRepaymentsOverlay();
   }
   updateAllTabs();
 });
