@@ -1186,7 +1186,6 @@ document.getElementById('investmentWeek').addEventListener('change', renderRoiSe
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => {
       computeSuggestedRepayments();
+      }
       updateAllTabs();
-    });
-  }
 });
