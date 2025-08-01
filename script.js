@@ -21,6 +21,17 @@ document.addEventListener('DOMContentLoaded', function() {
   // ROI week/date mapping
   let weekStartDates = [];
   let investmentWeekIndex = 0;
+  // --- DEMO: Suggested Repayments for Overlay ---
+window.suggestedRepayments = []; // Array parallel to weekLabels
+
+function computeSuggestedRepayments() {
+  // Demo: Suggest repayments for weeks 5, 12, 20 (indexes in weekLabels)
+  // Replace with your real IRR/NPV logic later!
+  window.suggestedRepayments = Array(window.weekLabels.length).fill(null);
+  window.suggestedRepayments[5] = 10000;
+  window.suggestedRepayments[12] = 40000;
+  window.suggestedRepayments[20] = 10000;
+}
 
   // --- Chart.js chart instances for destroy ---
   let mainChart = null;
@@ -722,6 +733,19 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!headerElem) return;
     headerElem.innerHTML = text;
   }
+ // Overlay actual & suggested repayment
+let actual = repaymentArr[i] || 0;
+let suggested = window.suggestedRepayments[weekIdxs[i]]; // Use mapped index
+
+let repaymentCell = '';
+if (suggested !== null && suggested !== undefined && suggested !== actual) {
+  repaymentCell = `<div>€${Math.round(actual).toLocaleString()}</div>
+    <div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
+} else if (suggested !== null && suggested !== undefined) {
+  repaymentCell = `<div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
+} else {
+  repaymentCell = `€${Math.round(actual).toLocaleString()}`;
+}
   function renderPnlTables() {
   // Weekly Breakdown
   const weeklyTable = document.getElementById('pnlWeeklyBreakdown');
@@ -997,11 +1021,13 @@ function renderRoiSection() {
     }
     tableHtml += `
       <tr>
-        <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
-        <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
-        <td>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+let row = `<tr${rollingArr[i]<0?' class="negative-balance-row"':''}>` +
+  `<td>${weekLabels[idx]}</td>` +
+  `<td${incomeArr[idx]<0?' class="negative-number"':''}>€${Math.round(incomeArr[idx]||0).toLocaleString()}</td>` +
+  `<td${expenditureArr[idx]<0?' class="negative-number"':''}>€${Math.round(expenditureArr[idx]||0).toLocaleString()}</td>` +
+  `<td>${repaymentCell}</td>` + // <-- changed, now shows overlay!
+  `<td class="${net<0?'negative-number':''}" data-tooltip="${netTooltip}">€${Math.round(net||0).toLocaleString()}</td>` +
+  `<td${rollingArr[i]<0?' class="negative-number"':''} data-tooltip="${balTooltip}">€${Math.round(rollingArr[i]||0).toLocaleString()}</td></tr>`;
       </tr>
     `;
   }
@@ -1131,6 +1157,7 @@ document.getElementById('investmentWeek').addEventListener('change', renderRoiSe
 
   // -------------------- Update All Tabs --------------------
   function updateAllTabs() {
+    computeSuggestedRepayments();
     renderRepaymentRows();
     updateLoanSummary();
     updateChartAndSummary();
