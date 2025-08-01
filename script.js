@@ -1,4 +1,7 @@
+// ROI/NPV/IRR Financial Tool - FULL SCRIPT
+
 document.addEventListener('DOMContentLoaded', function() {
+  // --- State ---
   let rawData = [];
   let mappedData = [];
   let mappingConfigured = false;
@@ -23,10 +26,61 @@ document.addEventListener('DOMContentLoaded', function() {
   let roiLineChart = null;
   window.tornadoChartObj = null;
   let summaryChart = null;
-  let isEditingRepayments = false;
   window.suggestedRepayments = [];
 
-  function computeSuggestedRepayments() {
+  // --- Remove legacy ROI edit controls if present ---
+  function removeLegacyRoiEditButtons() {
+    const legacyEdit = document.getElementById('roiEditControls');
+    if (legacyEdit) legacyEdit.remove();
+  }
+
+  // --- Setup ROI IRR/NPV slider overlay UI ---
+  function setupRoiIrrSlider() {
+    if (document.getElementById('roiIrrSliderRow')) return;
+    const paybackTableWrap = document.getElementById('roiPaybackTableWrap');
+    if (!paybackTableWrap) return;
+    const sliderRow = document.createElement('div');
+    sliderRow.id = "roiIrrSliderRow";
+    sliderRow.style.marginBottom = "10px";
+    sliderRow.innerHTML = `
+      <button id="toggleIrrSliderBtn">Edit IRR/NPV</button>
+      <span id="sliderContainer" style="display:none; margin-left:20px;">
+        <label for="irrSlider">Test IRR target: </label>
+        <input id="irrSlider" type="range" min="0" max="0.5" step="0.01" value="0.15" style="vertical-align:middle;">
+        <span id="irrSliderValue">0.15</span>
+        <button id="applySuggestedRepaymentsBtn" style="margin-left:14px;">Apply Suggestions</button>
+        <div id="overlayAlertBox" style="margin-top:5px;"></div>
+      </span>
+    `;
+    paybackTableWrap.parentNode.insertBefore(sliderRow, paybackTableWrap);
+
+    document.getElementById('toggleIrrSliderBtn').onclick = function() {
+      const sliderContainer = document.getElementById('sliderContainer');
+      sliderContainer.style.display = sliderContainer.style.display === 'none' ? '' : 'none';
+      if (sliderContainer.style.display === '') {
+        computeSuggestedRepaymentsForIrr(parseFloat(document.getElementById('irrSlider').value));
+        renderRoiSection(true);
+      } else {
+        window.suggestedRepayments = Array(window.weekLabels.length).fill(null);
+        renderRoiSection(false);
+      }
+    };
+
+    document.getElementById('irrSlider').oninput = function() {
+      document.getElementById('irrSliderValue').textContent = this.value;
+      computeSuggestedRepaymentsForIrr(parseFloat(this.value));
+      renderRoiSection(true);
+    };
+
+    document.getElementById('applySuggestedRepaymentsBtn').onclick = function() {
+      applySuggestedRepayments();
+      window.suggestedRepayments = Array(window.weekLabels.length).fill(null);
+      renderRoiSection(false);
+      document.getElementById('sliderContainer').style.display = "none";
+    };
+  }
+
+  function computeSuggestedRepaymentsForIrr(targetIrr) {
     window.suggestedRepayments = Array(window.weekLabels.length).fill(null);
     const count = Math.floor(Math.random() * 4) + 3;
     const used = new Set();
@@ -36,313 +90,31 @@ document.addEventListener('DOMContentLoaded', function() {
     used.forEach(idx => {
       window.suggestedRepayments[idx] = Math.round(Math.random() * 50000) + 5000;
     });
+    document.getElementById('overlayAlertBox').innerHTML =
+      `<div class="alert alert-success">Test overlay: <b>${count}</b> suggested repayments for IRR ${targetIrr} shown (green) in Payback Table.</div>`;
   }
 
-  function showOverlayAlert() {
-    const container = document.getElementById('overlayAlertBox');
-    if (!container) return;
-    if (!isEditingRepayments) return container.innerHTML = "";
-    const count = window.suggestedRepayments.filter(x => x !== null).length;
-    container.innerHTML = count
-      ? `<div class="alert alert-success">Test overlay: <b>${count}</b> suggested repayments shown (green) in Payback Table.</div>`
-      : '';
-  }
-
-  function setEditMode(edit) {
-    isEditingRepayments = edit;
-    const refreshBtn = document.getElementById('refreshTestRepaymentsBtn');
-    if (refreshBtn) refreshBtn.style.display = edit ? "" : "none";
-    showOverlayAlert();
-    renderRoiSection();
-  }
-
-  function setupRoiEditModeToggle() {
-    const roiTab = document.getElementById('roi');
-    if (!roiTab) return;
-    if (document.getElementById('toggleEditRepaymentsBtn')) return;
-    const editDiv = document.createElement('div');
-    editDiv.id = "roiEditControls";
-    editDiv.style.marginBottom = "10px";
-    editDiv.innerHTML = `
-      <button id="toggleEditRepaymentsBtn">Edit/Adjust Repayments</button>
-      <button id="refreshTestRepaymentsBtn" style="display:none;">Refresh Test Repayments</button>
-      <div id="overlayAlertBox" style="margin-top:5px;"></div>
-    `;
-    const paybackTableWrap = document.getElementById('roiPaybackTableWrap');
-    paybackTableWrap.parentNode.insertBefore(editDiv, paybackTableWrap);
-    document.getElementById('toggleEditRepaymentsBtn').addEventListener('click', function() {
-      setEditMode(!isEditingRepayments);
-      this.textContent = isEditingRepayments ? "Done Editing" : "Edit/Adjust Repayments";
-    });
-    document.getElementById('refreshTestRepaymentsBtn').addEventListener('click', function() {
-      computeSuggestedRepayments();
-      renderRoiSection();
-      showOverlayAlert();
-    });
-  }
-
-  function setupTabs() {
-    document.querySelectorAll('.tabs button').forEach(btn => {
-      btn.addEventListener('click', function() {
-        document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        document.querySelectorAll('.tab-content').forEach(sec => sec.classList.remove('active'));
-        var tabId = btn.getAttribute('data-tab');
-        var panel = document.getElementById(tabId);
-        if (panel) panel.classList.add('active');
-        setTimeout(() => {
-          updateAllTabs();
-          if (tabId === "roi") setupRoiEditModeToggle();
-        }, 50);
-      });
-    });
-    document.querySelectorAll('.subtabs button').forEach(btn => {
-      btn.addEventListener('click', function() {
-        document.querySelectorAll('.subtabs button').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        document.querySelectorAll('.subtab-panel').forEach(sec => sec.classList.remove('active'));
-        var subtabId = 'subtab-' + btn.getAttribute('data-subtab');
-        var subpanel = document.getElementById(subtabId);
-        if (subpanel) subpanel.classList.add('active');
-        setTimeout(updateAllTabs, 50);
-      });
-    });
-    document.querySelectorAll('.collapsible-header').forEach(btn => {
-      btn.addEventListener('click', function() {
-        var content = btn.nextElementSibling;
-        var caret = btn.querySelector('.caret');
-        if (content && content.classList.contains('active')) {
-          content.classList.remove('active');
-          if (caret) caret.style.transform = 'rotate(-90deg)';
-        } else if (content) {
-          content.classList.add('active');
-          if (caret) caret.style.transform = 'none';
-        }
-      });
-    });
-  }
-  setupTabs();
-
-  function setupSpreadsheetUpload() {
-    var spreadsheetUpload = document.getElementById('spreadsheetUpload');
-    if (spreadsheetUpload) {
-      spreadsheetUpload.addEventListener('change', function(event) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          const dataArr = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(dataArr, { type: 'array' });
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-          if (!json.length) return;
-          rawData = json;
-          mappedData = json;
-          autoDetectMapping(mappedData);
-          mappingConfigured = false;
-          renderMappingPanel(mappedData);
-          updateWeekLabels();
-          updateAllTabs();
-        };
-        reader.readAsArrayBuffer(event.target.files[0]);
-      });
-    }
-  }
-  setupSpreadsheetUpload();
-
-  function renderMappingPanel(allRows) {
-    const panel = document.getElementById('mappingPanel');
-    if (!panel) return;
-    panel.innerHTML = '';
-
-    function drop(label, id, max, sel, onChange, items) {
-      let lab = document.createElement('label');
-      lab.textContent = label;
-      let selElem = document.createElement('select');
-      selElem.className = 'mapping-dropdown';
-      for (let i = 0; i < max; i++) {
-        let opt = document.createElement('option');
-        opt.value = i;
-        let textVal = items && items[i] ? items[i] : (allRows[i] ? allRows[i].slice(0,8).join(',').slice(0,32) : '');
-        opt.textContent = `${id==='row'?'Row':'Col'} ${i+1}: ${textVal}`;
-        selElem.appendChild(opt);
-      }
-      selElem.value = sel;
-      selElem.onchange = function() { onChange(parseInt(this.value,10)); };
-      lab.appendChild(selElem);
-      panel.appendChild(lab);
-    }
-
-    drop('Which row contains week labels? ', 'row', Math.min(allRows.length, 30), config.weekLabelRow, v => { config.weekLabelRow = v; updateWeekLabels(); renderMappingPanel(allRows); updateAllTabs(); });
-    panel.appendChild(document.createElement('br'));
-    let weekRow = allRows[config.weekLabelRow] || [];
-    drop('First week column: ', 'col', weekRow.length, config.weekColStart, v => { config.weekColStart = v; updateWeekLabels(); renderMappingPanel(allRows); updateAllTabs(); }, weekRow);
-    drop('Last week column: ', 'col', weekRow.length, config.weekColEnd, v => { config.weekColEnd = v; updateWeekLabels(); renderMappingPanel(allRows); updateAllTabs(); }, weekRow);
-    panel.appendChild(document.createElement('br'));
-    drop('First data row: ', 'row', allRows.length, config.firstDataRow, v => { config.firstDataRow = v; renderMappingPanel(allRows); updateAllTabs(); });
-    drop('Last data row: ', 'row', allRows.length, config.lastDataRow, v => { config.lastDataRow = v; renderMappingPanel(allRows); updateAllTabs(); });
-    panel.appendChild(document.createElement('br'));
-    let obDiv = document.createElement('div');
-    obDiv.innerHTML = `Opening Balance: <input type="number" id="openingBalanceInput" value="${openingBalance}" style="width:120px;">`;
-    panel.appendChild(obDiv);
-    setTimeout(() => {
-      let obInput = document.getElementById('openingBalanceInput');
-      if (obInput) obInput.oninput = function() {
-        openingBalance = parseFloat(obInput.value) || 0;
-        updateAllTabs();
-        renderMappingPanel(allRows);
-      };
-    }, 0);
-    const resetBtn = document.createElement('button');
-    resetBtn.textContent = "Reset Mapping";
-    resetBtn.style.marginLeft = '10px';
-    resetBtn.onclick = function() {
-      autoDetectMapping(allRows);
-      weekCheckboxStates = weekLabels.map(()=>true);
-      openingBalance = 0;
-      renderMappingPanel(allRows);
-      updateWeekLabels();
-      updateAllTabs();
-    };
-    panel.appendChild(resetBtn);
-
-    if (weekLabels.length) {
-      const weekFilterDiv = document.createElement('div');
-      weekFilterDiv.className = "collapsible-week-filter";
-      const collapseBtn = document.createElement('button');
-      collapseBtn.type = 'button';
-      collapseBtn.className = 'collapse-toggle';
-      collapseBtn.innerHTML = `<span class="caret" style="display:inline-block;transition:transform 0.2s;margin-right:6px;">&#9654;</span>Filter week columns to include:`;
-      collapseBtn.style.marginBottom = '10px';
-      collapseBtn.style.background = 'none';
-      collapseBtn.style.color = '#1976d2';
-      collapseBtn.style.fontWeight = 'bold';
-      collapseBtn.style.fontSize = '1.06em';
-      collapseBtn.style.border = 'none';
-      collapseBtn.style.cursor = 'pointer';
-      collapseBtn.style.outline = 'none';
-      collapseBtn.style.padding = '4px 0';
-      const collapsibleContent = document.createElement('div');
-      collapsibleContent.className = "week-checkbox-collapsible-content";
-      collapsibleContent.style.display = 'none';
-      collapsibleContent.style.margin = '14px 0 4px 0';
-      const selectAllBtn = document.createElement('button');
-      selectAllBtn.textContent = "Select All";
-      selectAllBtn.type = 'button';
-      selectAllBtn.style.marginRight = '8px';
-      selectAllBtn.onclick = function() {
-        weekCheckboxStates = weekCheckboxStates.map(()=>true);
-        updateAllTabs();
-        renderMappingPanel(allRows);
-      };
-      const deselectAllBtn = document.createElement('button');
-      deselectAllBtn.textContent = "Deselect All";
-      deselectAllBtn.type = 'button';
-      deselectAllBtn.onclick = function() {
-        weekCheckboxStates = weekCheckboxStates.map(()=>false);
-        updateAllTabs();
-        renderMappingPanel(allRows);
-      };
-      collapsibleContent.appendChild(selectAllBtn);
-      collapsibleContent.appendChild(deselectAllBtn);
-      const groupDiv = document.createElement('div');
-      groupDiv.className = 'week-checkbox-group';
-      groupDiv.style.marginTop = '8px';
-      weekLabels.forEach((label, idx) => {
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = weekCheckboxStates[idx] !== false;
-        cb.id = 'weekcol_cb_' + idx;
-        cb.onchange = function() {
-          weekCheckboxStates[idx] = cb.checked;
-          updateAllTabs();
-          renderMappingPanel(allRows);
-        };
-        const lab = document.createElement('label');
-        lab.htmlFor = cb.id;
-        lab.textContent = label;
-        lab.style.marginRight = '13px';
-        groupDiv.appendChild(cb);
-        groupDiv.appendChild(lab);
-      });
-      collapsibleContent.appendChild(groupDiv);
-      collapseBtn.addEventListener('click', function() {
-        const isOpen = collapsibleContent.style.display !== 'none';
-        collapsibleContent.style.display = isOpen ? 'none' : 'block';
-        const caret = collapseBtn.querySelector('.caret');
-        caret.style.transform = isOpen ? 'rotate(0)' : 'rotate(90deg)';
-      });
-      weekFilterDiv.appendChild(collapseBtn);
-      weekFilterDiv.appendChild(collapsibleContent);
-      panel.appendChild(weekFilterDiv);
-    }
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = "Save Mapping";
-    saveBtn.style.margin = "10px 0";
-    saveBtn.onclick = function() {
-      mappingConfigured = true;
-      updateWeekLabels();
-      updateAllTabs();
-      renderMappingPanel(allRows);
-    };
-    panel.appendChild(saveBtn);
-
-    if (weekLabels.length && mappingConfigured) {
-      const previewWrap = document.createElement('div');
-      const compactTable = document.createElement('table');
-      compactTable.className = "compact-preview-table";
-      const tr1 = document.createElement('tr');
-      tr1.appendChild(document.createElement('th'));
-      getFilteredWeekIndices().forEach(fi => {
-        const th = document.createElement('th');
-        th.textContent = weekLabels[fi];
-        tr1.appendChild(th);
-      });
-      compactTable.appendChild(tr1);
-      const tr2 = document.createElement('tr');
-      const lbl = document.createElement('td');
-      lbl.textContent = "Bank Balance (rolling)";
-      tr2.appendChild(lbl);
-      let rolling = getRollingBankBalanceArr();
-      getFilteredWeekIndices().forEach((fi, i) => {
-        let bal = rolling[i];
-        let td = document.createElement('td');
-        td.textContent = isNaN(bal) ? '' : `€${Math.round(bal)}`;
-        if (bal < 0) td.style.background = "#ffeaea";
-        tr2.appendChild(td);
-      });
-      compactTable.appendChild(tr2);
-      previewWrap.style.overflowX = "auto";
-      previewWrap.appendChild(compactTable);
-      panel.appendChild(previewWrap);
-    }
-  }
-
-  function autoDetectMapping(sheet) {
-    for (let r = 0; r < Math.min(sheet.length, 10); r++) {
-      for (let c = 0; c < Math.min(sheet[r].length, 30); c++) {
-        const val = (sheet[r][c] || '').toString().toLowerCase();
-        if (/week\s*\d+/.test(val) || /week\s*\d+\/\d+/.test(val)) {
-          config.weekLabelRow = r;
-          config.weekColStart = c;
-          let lastCol = c;
-          while (
-            lastCol < sheet[r].length &&
-            ((sheet[r][lastCol] || '').toLowerCase().indexOf('week') >= 0 ||
-            /^\d{1,2}\/\d{1,2}/.test(sheet[r][lastCol] || ''))
-          ) {
-            lastCol++;
-          }
-          config.weekColEnd = lastCol - 1;
-          config.firstDataRow = r + 1;
-          config.lastDataRow = sheet.length-1;
-          return;
-        }
+  function applySuggestedRepayments() {
+    let suggestions = window.suggestedRepayments;
+    for (let i = 0; i < suggestions.length; i++) {
+      if (suggestions[i] != null) {
+        repaymentRows = repaymentRows.filter(
+          r => !(r.type === "week" && weekLabels.indexOf(r.week) === i)
+        );
+        repaymentRows.push({ type: "week", week: weekLabels[i], amount: suggestions[i], editing: false });
       }
     }
-    config.weekLabelRow = 4;
-    config.weekColStart = 5;
-    config.weekColEnd = Math.max(5, (sheet[4]||[]).length-1);
-    config.firstDataRow = 6;
-    config.lastDataRow = sheet.length-1;
+    window.suggestedRepayments = Array(window.weekLabels.length).fill(null);
+  }
+
+  function updateWeekLabels() {
+    let weekRow = mappedData[config.weekLabelRow] || [];
+    weekLabels = weekRow.slice(config.weekColStart, config.weekColEnd+1).map(x => x || '');
+    window.weekLabels = weekLabels;
+    if (!weekCheckboxStates || weekCheckboxStates.length !== weekLabels.length) {
+      weekCheckboxStates = weekLabels.map(() => true);
+    }
+    weekStartDates = extractWeekStartDates(weekLabels, 2025);
   }
 
   function extractWeekStartDates(weekLabels, baseYear) {
@@ -364,74 +136,6 @@ document.addEventListener('DOMContentLoaded', function() {
       let date = new Date(currentYear, monthIdx, parseInt(day, 10));
       return date;
     });
-  }
-
-  function populateInvestmentWeekDropdown() {
-    const dropdown = document.getElementById('investmentWeek');
-    if (!dropdown) return;
-    dropdown.innerHTML = '';
-    weekLabels.forEach((label, i) => {
-      const opt = document.createElement('option');
-      let dateStr = weekStartDates[i]
-        ? weekStartDates[i].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-        : 'N/A';
-      opt.value = i;
-      opt.textContent = `${label} (${dateStr})`;
-      dropdown.appendChild(opt);
-    });
-    dropdown.value = investmentWeekIndex;
-  }
-
-  function updateWeekLabels() {
-    let weekRow = mappedData[config.weekLabelRow] || [];
-    weekLabels = weekRow.slice(config.weekColStart, config.weekColEnd+1).map(x => x || '');
-    window.weekLabels = weekLabels;
-    if (!weekCheckboxStates || weekCheckboxStates.length !== weekLabels.length) {
-      weekCheckboxStates = weekLabels.map(() => true);
-    }
-    populateWeekDropdown(weekLabels);
-    weekStartDates = extractWeekStartDates(weekLabels, 2025);
-    populateInvestmentWeekDropdown();
-  }
-
-  function getFilteredWeekIndices() {
-    return weekCheckboxStates.map((checked, idx) => checked ? idx : null).filter(idx => idx !== null);
-  }
-
-  function getIncomeArr() {
-    if (!mappedData || !mappingConfigured) return [];
-    let arr = [];
-    for (let w = 0; w < weekLabels.length; w++) {
-      if (!weekCheckboxStates[w]) continue;
-      let absCol = config.weekColStart + w;
-      let sum = 0;
-      for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
-        let val = mappedData[r][absCol];
-        if (typeof val === "string") val = val.replace(/,/g, '').replace(/€|\s/g,'');
-        let num = parseFloat(val);
-        if (!isNaN(num) && num > 0) sum += num;
-      }
-      arr[w] = sum;
-    }
-    return arr;
-  }
-
-  function getExpenditureArr() {
-    if (!mappedData || !mappingConfigured) return [];
-    let arr = [];
-    for (let w = 0; w < weekLabels.length; w++) {
-      if (!weekCheckboxStates[w]) continue;
-      let absCol = config.weekColStart + w;
-      let sum = 0;
-      for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
-        let val = mappedData[r][absCol];
-        if (typeof val === "string") val = val.replace(/,/g, '').replace(/€|\s/g,'');
-        let num = parseFloat(val);
-        if (!isNaN(num) && num < 0) sum += Math.abs(num);
-      }
-      arr[w] = sum;
-    }
-    return arr;
   }
 
   function getRepaymentArr() {
@@ -458,11 +162,41 @@ document.addEventListener('DOMContentLoaded', function() {
         if (r.frequency === "one-off") { arr[0] += r.amount; }
       }
     });
-    return getFilteredWeekIndices().map(idx => arr[idx]);
+    return arr;
   }
 
-  function getNetProfitArr(incomeArr, expenditureArr, repaymentArr) {
-    return incomeArr.map((inc, i) => (inc || 0) - (expenditureArr[i] || 0) - (repaymentArr[i] || 0));
+  function getIncomeArr() {
+    if (!mappedData || !mappingConfigured) return [];
+    let arr = [];
+    for (let w = 0; w < weekLabels.length; w++) {
+      let absCol = config.weekColStart + w;
+      let sum = 0;
+      for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
+        let val = mappedData[r][absCol];
+        if (typeof val === "string") val = val.replace(/,/g, '').replace(/€|\s/g,'');
+        let num = parseFloat(val);
+        if (!isNaN(num) && num > 0) sum += num;
+      }
+      arr[w] = sum;
+    }
+    return arr;
+  }
+
+  function getExpenditureArr() {
+    if (!mappedData || !mappingConfigured) return [];
+    let arr = [];
+    for (let w = 0; w < weekLabels.length; w++) {
+      let absCol = config.weekColStart + w;
+      let sum = 0;
+      for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
+        let val = mappedData[r][absCol];
+        if (typeof val === "string") val = val.replace(/,/g, '').replace(/€|\s/g,'');
+        let num = parseFloat(val);
+        if (!isNaN(num) && num < 0) sum += Math.abs(num);
+      }
+      arr[w] = sum;
+    }
+    return arr;
   }
 
   function getRollingBankBalanceArr() {
@@ -471,82 +205,23 @@ document.addEventListener('DOMContentLoaded', function() {
     let repaymentArr = getRepaymentArr();
     let rolling = [];
     let ob = openingBalance;
-    getFilteredWeekIndices().forEach((fi, i) => {
-      let income = incomeArr[fi] || 0;
-      let out = expenditureArr[fi] || 0;
+    for (let i = 0; i < weekLabels.length; i++) {
+      let income = incomeArr[i] || 0;
+      let out = expenditureArr[i] || 0;
       let repay = repaymentArr[i] || 0;
       let prev = (i === 0 ? ob : rolling[i-1]);
       rolling[i] = prev + income - out - repay;
-    });
+    }
     return rolling;
   }
 
-  function getMonthAgg(arr, months=12) {
-    let filtered = arr.filter((_,i)=>getFilteredWeekIndices().includes(i));
-    let perMonth = Math.ceil(filtered.length/months);
-    let out = [];
-    for(let m=0;m<months;m++) {
-      let sum=0;
-      for(let w=m*perMonth;w<(m+1)*perMonth && w<filtered.length;w++) sum += filtered[w];
-      out.push(sum);
-    }
-    return out;
+  function getNetProfitArr(incomeArr, expenditureArr, repaymentArr) {
+    return incomeArr.map((inc, i) => (inc || 0) - (expenditureArr[i] || 0) - (repaymentArr[i] || 0));
   }
 
-  function populateWeekDropdown(labels) {
-    const weekSelect = document.getElementById('weekSelect');
-    if (!weekSelect) return;
-    weekSelect.innerHTML = '';
-    (labels && labels.length ? labels : Array.from({length: 52}, (_, i) => `Week ${i+1}`)).forEach(label => {
-      const opt = document.createElement('option');
-      opt.value = label;
-      opt.textContent = label;
-      weekSelect.appendChild(opt);
-    });
+  function getFilteredWeekIndices() {
+    return weekLabels.map((_, idx) => idx);
   }
-
-  function setupRepaymentForm() {
-    const weekSelect = document.getElementById('weekSelect');
-    const repaymentFrequency = document.getElementById('repaymentFrequency');
-    if (!weekSelect || !repaymentFrequency) return;
-    document.querySelectorAll('input[name="repaymentType"]').forEach(radio => {
-      radio.addEventListener('change', function() {
-        if (this.value === "week") {
-          weekSelect.disabled = false;
-          repaymentFrequency.disabled = true;
-        } else {
-          weekSelect.disabled = true;
-          repaymentFrequency.disabled = false;
-        }
-      });
-    });
-    let addRepaymentForm = document.getElementById('addRepaymentForm');
-    if (addRepaymentForm) {
-      addRepaymentForm.onsubmit = function(e) {
-        e.preventDefault();
-        const type = document.querySelector('input[name="repaymentType"]:checked').value;
-        let week = null, frequency = null;
-        if (type === "week") {
-          week = weekSelect.value;
-        } else {
-          frequency = repaymentFrequency.value;
-        }
-        const amount = document.getElementById('repaymentAmount').value;
-        if (!amount) return;
-        repaymentRows.push({ type, week, frequency, amount: parseFloat(amount), editing: false });
-        renderRepaymentRows();
-        this.reset();
-        populateWeekDropdown(weekLabels);
-        document.getElementById('weekSelect').selectedIndex = 0;
-        document.getElementById('repaymentFrequency').selectedIndex = 0;
-        document.querySelector('input[name="repaymentType"][value="week"]').checked = true;
-        weekSelect.disabled = false;
-        repaymentFrequency.disabled = true;
-        updateAllTabs();
-      };
-    }
-  }
-  setupRepaymentForm();
 
   function renderRepaymentRows() {
     const container = document.getElementById('repaymentRows');
@@ -555,44 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
     repaymentRows.forEach((row, i) => {
       const div = document.createElement('div');
       div.className = 'repayment-row';
-      const weekSelectElem = document.createElement('select');
-      (weekLabels.length ? weekLabels : Array.from({length:52}, (_,i)=>`Week ${i+1}`)).forEach(label => {
-        const opt = document.createElement('option');
-        opt.value = label;
-        opt.textContent = label;
-        weekSelectElem.appendChild(opt);
-      });
-      weekSelectElem.value = row.week || "";
-      weekSelectElem.disabled = !row.editing || row.type !== "week";
-      const freqSelect = document.createElement('select');
-      ["monthly", "quarterly", "one-off"].forEach(f => {
-        const opt = document.createElement('option');
-        opt.value = f;
-        opt.textContent = f.charAt(0).toUpperCase() + f.slice(1);
-        freqSelect.appendChild(opt);
-      });
-      freqSelect.value = row.frequency || "monthly";
-      freqSelect.disabled = !row.editing || row.type !== "frequency";
-      const amountInput = document.createElement('input');
-      amountInput.type = 'number';
-      amountInput.value = row.amount;
-      amountInput.placeholder = 'Repayment €';
-      amountInput.disabled = !row.editing;
-      const editBtn = document.createElement('button');
-      editBtn.textContent = row.editing ? 'Save' : 'Edit';
-      editBtn.onclick = function() {
-        if (row.editing) {
-          if (row.type === "week") {
-            row.week = weekSelectElem.value;
-          } else {
-            row.frequency = freqSelect.value;
-          }
-          row.amount = parseFloat(amountInput.value);
-        }
-        row.editing = !row.editing;
-        renderRepaymentRows();
-        updateAllTabs();
-      };
+      div.textContent = row.type === "week" ? `${row.week}: €${row.amount}` : `${row.frequency}: €${row.amount}`;
       const removeBtn = document.createElement('button');
       removeBtn.textContent = 'Remove';
       removeBtn.onclick = function() {
@@ -600,18 +238,6 @@ document.addEventListener('DOMContentLoaded', function() {
         renderRepaymentRows();
         updateAllTabs();
       };
-      const modeLabel = document.createElement('span');
-      modeLabel.style.marginRight = "10px";
-      modeLabel.textContent = row.type === "week" ? "Week" : "Frequency";
-      if (row.type === "week") {
-        div.appendChild(modeLabel);
-        div.appendChild(weekSelectElem);
-      } else {
-        div.appendChild(modeLabel);
-        div.appendChild(freqSelect);
-      }
-      div.appendChild(amountInput);
-      div.appendChild(editBtn);
       div.appendChild(removeBtn);
       container.appendChild(div);
     });
@@ -624,85 +250,66 @@ document.addEventListener('DOMContentLoaded', function() {
     if (totalRepaidBox) totalRepaidBox.textContent = "Total Repaid: €" + totalRepaid.toLocaleString();
     if (remainingBox) remainingBox.textContent = "Remaining: €" + (loanOutstanding-totalRepaid).toLocaleString();
   }
-  let loanOutstandingInput = document.getElementById('loanOutstandingInput');
-  if (loanOutstandingInput) {
-    loanOutstandingInput.oninput = function() {
-      loanOutstanding = parseFloat(this.value) || 0;
-      updateLoanSummary();
-    };
-  }
 
   function updateChartAndSummary() {
-    let mainChartElem = document.getElementById('mainChart');
-    let mainChartSummaryElem = document.getElementById('mainChartSummary');
-    let mainChartNoDataElem = document.getElementById('mainChartNoData');
-    if (!mainChartElem || !mainChartSummaryElem || !mainChartNoDataElem) return;
-    if (!mappingConfigured || !weekLabels.length || getFilteredWeekIndices().length === 0) {
-      if (mainChartNoDataElem) mainChartNoDataElem.style.display = "";
-      if (mainChartSummaryElem) mainChartSummaryElem.innerHTML = "";
-      if (mainChart && typeof mainChart.destroy === "function") mainChart.destroy();
-      return;
-    } else {
-      if (mainChartNoDataElem) mainChartNoDataElem.style.display = "none";
-    }
-    const filteredWeeks = getFilteredWeekIndices();
-    const labels = filteredWeeks.map(idx => weekLabels[idx]);
+    const mainChartElem = document.getElementById('mainChart');
+    if (!mainChartElem) return;
     const incomeArr = getIncomeArr();
     const expenditureArr = getExpenditureArr();
     const repaymentArr = getRepaymentArr();
     const rollingArr = getRollingBankBalanceArr();
     const netProfitArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
-    const data = {
-      labels: labels,
-      datasets: [
-        {
-          label: "Income",
-          data: filteredWeeks.map(idx => incomeArr[idx] || 0),
-          backgroundColor: "rgba(76,175,80,0.6)",
-          borderColor: "#388e3c",
-          fill: false,
-          type: "bar"
-        },
-        {
-          label: "Expenditure",
-          data: filteredWeeks.map(idx => expenditureArr[idx] || 0),
-          backgroundColor: "rgba(244,67,54,0.6)",
-          borderColor: "#c62828",
-          fill: false,
-          type: "bar"
-        },
-        {
-          label: "Repayment",
-          data: filteredWeeks.map((_, i) => repaymentArr[i] || 0),
-          backgroundColor: "rgba(255,193,7,0.6)",
-          borderColor: "#ff9800",
-          fill: false,
-          type: "bar"
-        },
-        {
-          label: "Net Profit",
-          data: filteredWeeks.map((_, i) => netProfitArr[filteredWeeks[i]] || 0),
-          backgroundColor: "rgba(33,150,243,0.3)",
-          borderColor: "#1976d2",
-          type: "line",
-          fill: false,
-          yAxisID: "y"
-        },
-        {
-          label: "Rolling Bank Balance",
-          data: rollingArr,
-          backgroundColor: "rgba(156,39,176,0.2)",
-          borderColor: "#8e24aa",
-          type: "line",
-          fill: true,
-          yAxisID: "y"
-        }
-      ]
-    };
+
     if (mainChart && typeof mainChart.destroy === "function") mainChart.destroy();
     mainChart = new Chart(mainChartElem.getContext('2d'), {
       type: 'bar',
-      data: data,
+      data: {
+        labels: weekLabels,
+        datasets: [
+          {
+            label: "Income",
+            data: incomeArr,
+            backgroundColor: "rgba(76,175,80,0.6)",
+            borderColor: "#388e3c",
+            fill: false,
+            type: "bar"
+          },
+          {
+            label: "Expenditure",
+            data: expenditureArr,
+            backgroundColor: "rgba(244,67,54,0.6)",
+            borderColor: "#c62828",
+            fill: false,
+            type: "bar"
+          },
+          {
+            label: "Repayment",
+            data: repaymentArr,
+            backgroundColor: "rgba(255,193,7,0.6)",
+            borderColor: "#ff9800",
+            fill: false,
+            type: "bar"
+          },
+          {
+            label: "Net Profit",
+            data: netProfitArr,
+            backgroundColor: "rgba(33,150,243,0.3)",
+            borderColor: "#1976d2",
+            type: "line",
+            fill: false,
+            yAxisID: "y"
+          },
+          {
+            label: "Rolling Bank Balance",
+            data: rollingArr,
+            backgroundColor: "rgba(156,39,176,0.2)",
+            borderColor: "#8e24aa",
+            type: "line",
+            fill: true,
+            yAxisID: "y"
+          }
+        ]
+      },
       options: {
         responsive: true,
         plugins: {
@@ -718,304 +325,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
     });
-    let totalIncome = incomeArr.reduce((a,b)=>a+(b||0), 0);
-    let totalExpenditure = expenditureArr.reduce((a,b)=>a+(b||0), 0);
-    let totalRepayment = repaymentArr.reduce((a,b)=>a+(b||0), 0);
-    let finalBalance = rollingArr[rollingArr.length - 1] || 0;
-    let lowestBalance = Math.min(...rollingArr);
-    mainChartSummaryElem.innerHTML = `
-      <b>Total Income:</b> €${Math.round(totalIncome).toLocaleString()}<br>
-      <b>Total Expenditure:</b> €${Math.round(totalExpenditure).toLocaleString()}<br>
-      <b>Total Repayments:</b> €${Math.round(totalRepayment).toLocaleString()}<br>
-      <b>Final Bank Balance:</b> <span style="color:${finalBalance<0?'#c00':'#388e3c'}">€${Math.round(finalBalance).toLocaleString()}</span><br>
-      <b>Lowest Bank Balance:</b> <span style="color:${lowestBalance<0?'#c00':'#388e3c'}">€${Math.round(lowestBalance).toLocaleString()}</span>
-    `;
-  }
-
-  function renderPnlTables() {
-    const weeklyTable = document.getElementById('pnlWeeklyBreakdown');
-    const monthlyTable = document.getElementById('pnlMonthlyBreakdown');
-    const cashFlowTable = document.getElementById('pnlCashFlow');
-    const pnlSummary = document.getElementById('pnlSummary');
-    if (!weeklyTable || !monthlyTable || !cashFlowTable) return;
-    let tbody = weeklyTable.querySelector('tbody');
-    if (tbody) tbody.innerHTML = '';
-    let incomeArr = getIncomeArr();
-    let expenditureArr = getExpenditureArr();
-    let repaymentArr = getRepaymentArr();
-    let rollingArr = getRollingBankBalanceArr();
-    let netArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
-    let weekIdxs = getFilteredWeekIndices();
-    let rows = '';
-    let minBal = null, minBalWeek = null;
-    weekIdxs.forEach((idx, i) => {
-      const net = (incomeArr[idx] || 0) - (expenditureArr[idx] || 0) - (repaymentArr[i] || 0);
-      const netTooltip = `Income - Expenditure - Repayment\n${incomeArr[idx]||0} - ${expenditureArr[idx]||0} - ${repaymentArr[i]||0} = ${net}`;
-      const balTooltip = `Prev Bal + Income - Expenditure - Repayment\n${i===0?openingBalance:rollingArr[i-1]} + ${incomeArr[idx]||0} - ${expenditureArr[idx]||0} - ${repaymentArr[i]||0} = ${rollingArr[i]||0}`;
-      let row = `<tr${rollingArr[i]<0?' class="negative-balance-row"':''}>` +
-        `<td>${weekLabels[idx]}</td>` +
-        `<td${incomeArr[idx]<0?' class="negative-number"':''}>€${Math.round(incomeArr[idx]||0).toLocaleString()}</td>` +
-        `<td${expenditureArr[idx]<0?' class="negative-number"':''}>€${Math.round(expenditureArr[idx]||0).toLocaleString()}</td>` +
-        `<td${repaymentArr[i]<0?' class="negative-number"':''}>€${Math.round(repaymentArr[i]||0).toLocaleString()}</td>` +
-        `<td class="${net<0?'negative-number':''}" data-tooltip="${netTooltip}">€${Math.round(net||0).toLocaleString()}</td>` +
-        `<td${rollingArr[i]<0?' class="negative-number"':''} data-tooltip="${balTooltip}">€${Math.round(rollingArr[i]||0).toLocaleString()}</td></tr>`;
-      rows += row;
-      if (minBal===null||rollingArr[i]<minBal) {minBal=rollingArr[i];minBalWeek=weekLabels[idx];}
-    });
-    if (tbody) tbody.innerHTML = rows;
-    let months = 12;
-    let incomeMonth = getMonthAgg(incomeArr, months);
-    let expMonth = getMonthAgg(expenditureArr, months);
-    let repayMonth = getMonthAgg(repaymentArr, months);
-    let netMonth = incomeMonth.map((inc, i) => inc - (expMonth[i]||0) - (repayMonth[i]||0));
-    let mtbody = monthlyTable.querySelector('tbody');
-    if (mtbody) {
-      mtbody.innerHTML = '';
-      for (let m=0; m<months; m++) {
-        const netTooltip = `Income - Expenditure - Repayment\n${incomeMonth[m]||0} - ${expMonth[m]||0} - ${repayMonth[m]||0} = ${netMonth[m]||0}`;
-        mtbody.innerHTML += `<tr>
-          <td>Month ${m+1}</td>
-          <td${incomeMonth[m]<0?' class="negative-number"':''}>€${Math.round(incomeMonth[m]||0).toLocaleString()}</td>
-          <td${expMonth[m]<0?' class="negative-number"':''}>€${Math.round(expMonth[m]||0).toLocaleString()}</td>
-          <td class="${netMonth[m]<0?'negative-number':''}" data-tooltip="${netTooltip}">€${Math.round(netMonth[m]||0).toLocaleString()}</td>
-          <td${repayMonth[m]<0?' class="negative-number"':''}>€${Math.round(repayMonth[m]||0).toLocaleString()}</td>
-        </tr>`;
-      }
-    }
-    let ctbody = cashFlowTable.querySelector('tbody');
-    let closingArr = [];
-    if (ctbody) {
-      ctbody.innerHTML = '';
-      let closing = opening = openingBalance;
-      for (let m=0; m<months; m++) {
-        let inflow = incomeMonth[m] || 0;
-        let outflow = (expMonth[m] || 0) + (repayMonth[m] || 0);
-        closing = opening + inflow - outflow;
-        closingArr.push(closing);
-        const closingTooltip = `Opening + Inflow - Outflow\n${opening} + ${inflow} - ${outflow} = ${closing}`;
-        ctbody.innerHTML += `<tr>
-          <td>Month ${m+1}</td>
-          <td>€${Math.round(opening).toLocaleString()}</td>
-          <td>€${Math.round(inflow).toLocaleString()}</td>
-          <td>€${Math.round(outflow).toLocaleString()}</td>
-          <td${closing<0?' class="negative-number"':''} data-tooltip="${closingTooltip}">€${Math.round(closing).toLocaleString()}</td>
-        </tr>`;
-        opening = closing;
-      }
-    }
-    if (pnlSummary) {
-      pnlSummary.innerHTML = `
-        <b>Total Income:</b> €${Math.round(incomeArr.reduce((a,b)=>a+(b||0),0)).toLocaleString()}<br>
-        <b>Total Expenditure:</b> €${Math.round(expenditureArr.reduce((a,b)=>a+(b||0),0)).toLocaleString()}<br>
-        <b>Total Repayments:</b> €${Math.round(repaymentArr.reduce((a,b)=>a+(b||0),0)).toLocaleString()}<br>
-        <b>Final Bank Balance:</b> <span style="color:${rollingArr[rollingArr.length-1]<0?'#c00':'#388e3c'}">€${Math.round(rollingArr[rollingArr.length-1]||0).toLocaleString()}</span><br>
-        <b>Lowest Bank Balance:</b> <span style="color:${minBal<0?'#c00':'#388e3c'}">${minBalWeek?minBalWeek+': ':''}€${Math.round(minBal||0).toLocaleString()}</span>
-      `;
-    }
-  }
-
-  function renderSummaryTab() {
-    let incomeArr = getIncomeArr();
-    let expenditureArr = getExpenditureArr();
-    let repaymentArr = getRepaymentArr();
-    let rollingArr = getRollingBankBalanceArr();
-    let netArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
-    let totalIncome = incomeArr.reduce((a,b)=>a+(b||0),0);
-    let totalExpenditure = expenditureArr.reduce((a,b)=>a+(b||0),0);
-    let totalRepayment = repaymentArr.reduce((a,b)=>a+(b||0),0);
-    let finalBal = rollingArr[rollingArr.length-1]||0;
-    let minBal = Math.min(...rollingArr);
-
-    if (document.getElementById('kpiTotalIncome')) {
-      document.getElementById('kpiTotalIncome').textContent = '€' + totalIncome.toLocaleString();
-      document.getElementById('kpiTotalExpenditure').textContent = '€' + totalExpenditure.toLocaleString();
-      document.getElementById('kpiTotalRepayments').textContent = '€' + totalRepayment.toLocaleString();
-      document.getElementById('kpiFinalBank').textContent = '€' + Math.round(finalBal).toLocaleString();
-      document.getElementById('kpiLowestBank').textContent = '€' + Math.round(minBal).toLocaleString();
-    }
-
-    let summaryElem = document.getElementById('summaryKeyFinancials');
-    if (summaryElem) {
-      summaryElem.innerHTML = `
-        <b>Total Income:</b> €${Math.round(totalIncome).toLocaleString()}<br>
-        <b>Total Expenditure:</b> €${Math.round(totalExpenditure).toLocaleString()}<br>
-        <b>Total Repayments:</b> €${Math.round(totalRepayment).toLocaleString()}<br>
-        <b>Final Bank Balance:</b> <span style="color:${finalBal<0?'#c00':'#388e3c'}">€${Math.round(finalBal).toLocaleString()}</span><br>
-        <b>Lowest Bank Balance:</b> <span style="color:${minBal<0?'#c00':'#388e3c'}">€${Math.round(minBal).toLocaleString()}</span>
-      `;
-    }
-
-    let summaryChartElem = document.getElementById('summaryChart');
-    if (summaryChart && typeof summaryChart.destroy === "function") summaryChart.destroy();
-    if (summaryChartElem) {
-      summaryChart = new Chart(summaryChartElem.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: ["Income", "Expenditure", "Repayment", "Final Bank", "Lowest Bank"],
-          datasets: [{
-            label: "Totals",
-            data: [
-              Math.round(totalIncome),
-              -Math.round(totalExpenditure),
-              -Math.round(totalRepayment),
-              Math.round(finalBal),
-              Math.round(minBal)
-            ],
-            backgroundColor: [
-              "#4caf50","#f44336","#ffc107","#2196f3","#9c27b0"
-            ]
-          }]
-        },
-        options: {
-          responsive:true,
-          plugins:{legend:{display:false}},
-          scales: { y: { beginAtZero: true } }
-        }
-      });
-    }
-    renderTornadoChart();
-  }
-
-  function renderTornadoChart() {
-    let impact = [];
-    if (!mappedData || !mappingConfigured) return;
-    for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
-      let label = mappedData[r][0] || `Row ${r + 1}`;
-      let vals = [];
-      for (let w = 0; w < weekLabels.length; w++) {
-        if (!weekCheckboxStates[w]) continue;
-        let absCol = config.weekColStart + w;
-        let val = mappedData[r][absCol];
-        if (typeof val === "string") val = val.replace(/,/g,'').replace(/€|\s/g,'');
-        let num = parseFloat(val);
-        if (!isNaN(num)) vals.push(num);
-      }
-      let total = vals.reduce((a,b)=>a+Math.abs(b),0);
-      if (total > 0) impact.push({label, total});
-    }
-    impact.sort((a,b)=>b.total-a.total);
-    impact = impact.slice(0, 10);
-    let ctx = document.getElementById('tornadoChart').getContext('2d');
-    if (window.tornadoChartObj && typeof window.tornadoChartObj.destroy === "function") window.tornadoChartObj.destroy();
-    window.tornadoChartObj = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: impact.map(x=>x.label),
-        datasets: [{ label: "Total Impact (€)", data: impact.map(x=>x.total), backgroundColor: '#1976d2' }]
-      },
-      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } } }
-    });
-  }
-
-  function renderRoiSection() {
-    const dropdown = document.getElementById('investmentWeek');
-    if (!dropdown || !weekStartDates.length) return;
-    investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
-    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
-    const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
-    const investmentWeek = investmentWeekIndex;
-    const investmentDate = weekStartDates[investmentWeek] || null;
-    const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
-    const repayments = repaymentsFull.slice(investmentWeek);
-    const cashflows = [-investment, ...repayments];
-    let cashflowDates = [investmentDate];
-    for (let i = 1; i < cashflows.length; i++) {
-      let idx = investmentWeek + i;
-      cashflowDates[i] = weekStartDates[idx] || null;
-    }
-    function npv(rate, cashflows) {
-      if (!cashflows.length) return 0;
-      return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
-    }
-    function irr(cashflows, guess=0.1) {
-      let rate = guess, epsilon = 1e-6, maxIter = 100;
-      for (let iter=0; iter<maxIter; iter++) {
-        let npv0 = npv(rate, cashflows);
-        let npv1 = npv(rate+epsilon, cashflows);
-        let deriv = (npv1-npv0)/epsilon;
-        let newRate = rate - npv0/deriv;
-        if (!isFinite(newRate)) break;
-        if (Math.abs(newRate-rate) < 1e-7) return newRate;
-        rate = newRate;
-      }
-      return NaN;
-    }
-    function npv_date(rate, cashflows, dateArr) {
-      const msPerDay = 24 * 3600 * 1000;
-      const baseDate = dateArr[0];
-      return cashflows.reduce((acc, val, i) => {
-        if (!dateArr[i]) return acc;
-        let days = (dateArr[i] - baseDate) / msPerDay;
-        let years = days / 365.25;
-        return acc + val / Math.pow(1 + rate, years);
-      }, 0);
-    }
-    let npvVal = (discountRate && cashflows.length > 1 && cashflowDates[0]) ?
-      npv_date(discountRate / 100, cashflows, cashflowDates) : null;
-    let irrVal = (cashflows.length > 1) ? irr(cashflows) : NaN;
-    let discCum = 0, payback = null;
-    for (let i = 1; i < cashflows.length; i++) {
-      let discounted = repayments[i - 1] / Math.pow(1 + discountRate / 100, i);
-      discCum += discounted;
-      if (payback === null && discCum >= investment) payback = i;
-    }
-    let tableHtml = `
-      <table class="table table-sm">
-        <thead>
-          <tr>
-            <th>Period</th>
-            <th>Date</th>
-            <th>Repayment</th>
-            <th>Cumulative</th>
-            <th>Discounted Cumulative</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-    let cum = 0, discCum2 = 0;
-    for (let i = 0; i < repayments.length; i++) {
-      cum += repayments[i];
-      if (repayments[i] > 0) {
-        discCum2 += repayments[i] / Math.pow(1 + discountRate / 100, i + 1);
-      }
-      let suggested = isEditingRepayments ? (window.suggestedRepayments[investmentWeek + i] || null) : null;
-      let repaymentCell = "";
-      if (suggested !== null && suggested !== undefined && suggested !== repayments[i]) {
-        repaymentCell = `<div>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
-          <div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
-      } else if (suggested !== null && suggested !== undefined) {
-        repaymentCell = `<div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
-      } else {
-        repaymentCell = `€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}`;
-      }
-      tableHtml += `
-        <tr>
-          <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
-          <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
-          <td>${repaymentCell}</td>
-          <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-          <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        </tr>
-      `;
-    }
-    tableHtml += `</tbody></table>`;
-    let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
-      <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
-      <b>NPV (${discountRate}%):</b> ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "n/a"}<br>
-      <b>IRR:</b> ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'n/a'}<br>
-      <b>Discounted Payback (periods):</b> ${payback ?? 'n/a'}`;
-    let badge = '';
-    if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
-    else if (irrVal > 0.08) badge = '<span class="badge badge-warning">Moderate ROI</span>';
-    else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
-    else badge = '';
-    document.getElementById('roiSummary').innerHTML = summary + badge;
-    document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
-    renderRoiCharts(investment, repayments);
-    if (!repayments.length || repayments.reduce((a, b) => a + b, 0) === 0) {
-      document.getElementById('roiSummary').innerHTML += '<div class="alert alert-warning">No repayments scheduled. ROI cannot be calculated.</div>';
-    }
-    showOverlayAlert();
   }
 
   function renderRoiCharts(investment, repayments) {
@@ -1100,10 +409,247 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  document.getElementById('roiInvestmentInput').addEventListener('input', renderRoiSection);
-  document.getElementById('roiInterestInput').addEventListener('input', renderRoiSection);
-  document.getElementById('refreshRoiBtn').addEventListener('click', renderRoiSection);
-  document.getElementById('investmentWeek').addEventListener('change', renderRoiSection);
+  function renderTornadoChart() {
+    let impact = [];
+    if (!mappedData || !mappingConfigured) return;
+    for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
+      let label = mappedData[r][0] || `Row ${r + 1}`;
+      let vals = [];
+      for (let w = 0; w < weekLabels.length; w++) {
+        let absCol = config.weekColStart + w;
+        let val = mappedData[r][absCol];
+        if (typeof val === "string") val = val.replace(/,/g,'').replace(/€|\s/g,'');
+        let num = parseFloat(val);
+        if (!isNaN(num)) vals.push(num);
+      }
+      let total = vals.reduce((a,b)=>a+Math.abs(b),0);
+      if (total > 0) impact.push({label, total});
+    }
+    impact.sort((a,b)=>b.total-a.total);
+    impact = impact.slice(0, 10);
+    let ctx = document.getElementById('tornadoChart');
+    if (!ctx) return;
+    ctx = ctx.getContext('2d');
+    if (window.tornadoChartObj && typeof window.tornadoChartObj.destroy === "function") window.tornadoChartObj.destroy();
+    window.tornadoChartObj = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: impact.map(x=>x.label),
+        datasets: [{ label: "Total Impact (€)", data: impact.map(x=>x.total), backgroundColor: '#1976d2' }]
+      },
+      options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } } }
+    });
+  }
+
+  function renderSummaryTab() {
+    let incomeArr = getIncomeArr();
+    let expenditureArr = getExpenditureArr();
+    let repaymentArr = getRepaymentArr();
+    let rollingArr = getRollingBankBalanceArr();
+    let netArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
+    let totalIncome = incomeArr.reduce((a,b)=>a+(b||0),0);
+    let totalExpenditure = expenditureArr.reduce((a,b)=>a+(b||0),0);
+    let totalRepayment = repaymentArr.reduce((a,b)=>a+(b||0),0);
+    let finalBal = rollingArr[rollingArr.length-1]||0;
+    let minBal = Math.min(...rollingArr);
+
+    if (document.getElementById('summaryKeyFinancials')) {
+      document.getElementById('summaryKeyFinancials').innerHTML = `
+        <b>Total Income:</b> €${Math.round(totalIncome).toLocaleString()}<br>
+        <b>Total Expenditure:</b> €${Math.round(totalExpenditure).toLocaleString()}<br>
+        <b>Total Repayments:</b> €${Math.round(totalRepayment).toLocaleString()}<br>
+        <b>Final Bank Balance:</b> <span style="color:${finalBal<0?'#c00':'#388e3c'}">€${Math.round(finalBal).toLocaleString()}</span><br>
+        <b>Lowest Bank Balance:</b> <span style="color:${minBal<0?'#c00':'#388e3c'}">€${Math.round(minBal).toLocaleString()}</span>
+      `;
+    }
+    let summaryChartElem = document.getElementById('summaryChart');
+    if (summaryChart && typeof summaryChart.destroy === "function") summaryChart.destroy();
+    if (summaryChartElem) {
+      summaryChart = new Chart(summaryChartElem.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: ["Income", "Expenditure", "Repayment", "Final Bank", "Lowest Bank"],
+          datasets: [{
+            label: "Totals",
+            data: [
+              Math.round(totalIncome),
+              -Math.round(totalExpenditure),
+              -Math.round(totalRepayment),
+              Math.round(finalBal),
+              Math.round(minBal)
+            ],
+            backgroundColor: [
+              "#4caf50","#f44336","#ffc107","#2196f3","#9c27b0"
+            ]
+          }]
+        },
+        options: {
+          responsive:true,
+          plugins:{legend:{display:false}},
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+  }
+
+  function renderPnlTables() {
+    // Stub: Implement weekly/monthly/cashflow tables as needed
+    // For now, we just call updateChartAndSummary
+    updateChartAndSummary();
+  }
+
+  // --- ROI Section (with showSuggestions param) ---
+  window.renderRoiSection = function(showSuggestions) {
+    const dropdown = document.getElementById('investmentWeek');
+    if (!dropdown || !weekStartDates.length) return;
+    investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
+    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+    const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
+    const investmentWeek = investmentWeekIndex;
+    const investmentDate = weekStartDates[investmentWeek] || null;
+    const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
+    const repayments = repaymentsFull.slice(investmentWeek);
+    const cashflows = [-investment, ...repayments];
+    let cashflowDates = [investmentDate];
+    for (let i = 1; i < cashflows.length; i++) {
+      let idx = investmentWeek + i;
+      cashflowDates[i] = weekStartDates[idx] || null;
+    }
+    function npv(rate, cashflows) {
+      if (!cashflows.length) return 0;
+      return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
+    }
+    function irr(cashflows, guess=0.1) {
+      let rate = guess, epsilon = 1e-6, maxIter = 100;
+      for (let iter=0; iter<maxIter; iter++) {
+        let npv0 = npv(rate, cashflows);
+        let npv1 = npv(rate+epsilon, cashflows);
+        let deriv = (npv1-npv0)/epsilon;
+        let newRate = rate - npv0/deriv;
+        if (!isFinite(newRate)) break;
+        if (Math.abs(newRate-rate) < 1e-7) return newRate;
+        rate = newRate;
+      }
+      return NaN;
+    }
+    function npv_date(rate, cashflows, dateArr) {
+      const msPerDay = 24 * 3600 * 1000;
+      const baseDate = dateArr[0];
+      return cashflows.reduce((acc, val, i) => {
+        if (!dateArr[i]) return acc;
+        let days = (dateArr[i] - baseDate) / msPerDay;
+        let years = days / 365.25;
+        return acc + val / Math.pow(1 + rate, years);
+      }, 0);
+    }
+    let npvVal = (discountRate && cashflows.length > 1 && cashflowDates[0]) ?
+      npv_date(discountRate / 100, cashflows, cashflowDates) : null;
+    let irrVal = (cashflows.length > 1) ? irr(cashflows) : NaN;
+    let discCum = 0, payback = null;
+    for (let i = 1; i < cashflows.length; i++) {
+      let discounted = repayments[i - 1] / Math.pow(1 + discountRate / 100, i);
+      discCum += discounted;
+      if (payback === null && discCum >= investment) payback = i;
+    }
+    let tableHtml = `
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Date</th>
+            <th>Repayment</th>
+            <th>Cumulative</th>
+            <th>Discounted Cumulative</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    let cum = 0, discCum2 = 0;
+    for (let i = 0; i < repayments.length; i++) {
+      cum += repayments[i];
+      if (repayments[i] > 0) {
+        discCum2 += repayments[i] / Math.pow(1 + discountRate / 100, i + 1);
+      }
+      let suggested = showSuggestions ? (window.suggestedRepayments[investmentWeek + i] || null) : null;
+      let repaymentCell = "";
+      if (suggested !== null && suggested !== undefined && suggested !== repayments[i]) {
+        repaymentCell = `<div>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+          <div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
+      } else if (suggested !== null && suggested !== undefined) {
+        repaymentCell = `<div class="suggested-repayment">Suggested: €${Math.round(suggested).toLocaleString()}</div>`;
+      } else {
+        repaymentCell = `€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}`;
+      }
+      tableHtml += `
+        <tr>
+          <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
+          <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
+          <td>${repaymentCell}</td>
+          <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+          <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+        </tr>
+      `;
+    }
+    tableHtml += `</tbody></table>`;
+    let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
+      <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
+      <b>NPV (${discountRate}%):</b> ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "n/a"}<br>
+      <b>IRR:</b> ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'n/a'}<br>
+      <b>Discounted Payback (periods):</b> ${payback ?? 'n/a'}`;
+    let badge = '';
+    if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
+    else if (irrVal > 0.08) badge = '<span class="badge badge-warning">Moderate ROI</span>';
+    else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
+    else badge = '';
+    document.getElementById('roiSummary').innerHTML = summary + badge;
+    document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
+    renderRoiCharts(investment, repayments);
+    if (!repayments.length || repayments.reduce((a, b) => a + b, 0) === 0) {
+      document.getElementById('roiSummary').innerHTML += '<div class="alert alert-warning">No repayments scheduled. ROI cannot be calculated.</div>';
+    }
+  };
+
+  function setupTabs() {
+    document.querySelectorAll('.tabs button').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        document.querySelectorAll('.tab-content').forEach(sec => sec.classList.remove('active'));
+        var tabId = btn.getAttribute('data-tab');
+        var panel = document.getElementById(tabId);
+        if (panel) panel.classList.add('active');
+        setTimeout(() => {
+          updateAllTabs();
+          if (tabId === "roi") setupRoiIrrSlider();
+        }, 50);
+      });
+    });
+    document.querySelectorAll('.subtabs button').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.subtabs button').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        document.querySelectorAll('.subtab-panel').forEach(sec => sec.classList.remove('active'));
+        var subtabId = 'subtab-' + btn.getAttribute('data-subtab');
+        var subpanel = document.getElementById(subtabId);
+        if (subpanel) subpanel.classList.add('active');
+        setTimeout(updateAllTabs, 50);
+      });
+    });
+    document.querySelectorAll('.collapsible-header').forEach(btn => {
+      btn.addEventListener('click', function() {
+        var content = btn.nextElementSibling;
+        var caret = btn.querySelector('.caret');
+        if (content && content.classList.contains('active')) {
+          content.classList.remove('active');
+          if (caret) caret.style.transform = 'rotate(-90deg)';
+        } else if (content) {
+          content.classList.add('active');
+          if (caret) caret.style.transform = 'none';
+        }
+      });
+    });
+  }
+  setupTabs();
 
   function updateAllTabs() {
     renderRepaymentRows();
@@ -1111,10 +657,10 @@ document.addEventListener('DOMContentLoaded', function() {
     updateChartAndSummary();
     renderPnlTables();
     renderSummaryTab();
-    renderRoiSection();
+    renderRoiSection(false);
     renderTornadoChart();
-    showOverlayAlert();
   }
   updateAllTabs();
-  setTimeout(setupRoiEditModeToggle, 400);
+
+  setTimeout(setupRoiIrrSlider, 400);
 });
