@@ -544,8 +544,77 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function renderPnlTables() {
-    // Stub: Implement weekly/monthly/cashflow tables as needed
-    // For now, we just call updateChartAndSummary
+    // Render Weekly P&L Table
+    const incomeArr = getIncomeArr();
+    const expenditureArr = getExpenditureArr();
+    const repaymentArr = getRepaymentArr();
+    const rollingArr = getRollingBankBalanceArr();
+    const netArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
+
+    // Render Weekly Table
+    const weeklyTableElem = document.getElementById('pnlTableWeekly');
+    if (weeklyTableElem) {
+      let table = `<table class="table table-sm table-bordered"><thead><tr>
+        <th>Week</th>
+        <th>Income</th>
+        <th>Expenditure</th>
+        <th>Repayment</th>
+        <th>Net Profit</th>
+        <th>Bank Balance</th>
+      </tr></thead><tbody>`;
+      for (let i = 0; i < incomeArr.length; i++) {
+        table += `<tr>
+          <td>${i + 1}</td>
+          <td>€${(incomeArr[i]||0).toLocaleString()}</td>
+          <td>€${(expenditureArr[i]||0).toLocaleString()}</td>
+          <td>€${(repaymentArr[i]||0).toLocaleString()}</td>
+          <td>€${(netArr[i]||0).toLocaleString()}</td>
+          <td>€${(rollingArr[i]||0).toLocaleString()}</td>
+        </tr>`;
+      }
+      table += `</tbody></table>`;
+      weeklyTableElem.innerHTML = table;
+    }
+
+    // Render Monthly Table (if desired)
+    const monthlyTableElem = document.getElementById('pnlTableMonthly');
+    if (monthlyTableElem) {
+      // Group data by month (assuming 4 weeks per month for simplicity)
+      let table = `<table class="table table-sm table-bordered"><thead><tr>
+        <th>Month</th>
+        <th>Income</th>
+        <th>Expenditure</th>
+        <th>Repayment</th>
+        <th>Net Profit</th>
+        <th>Bank Balance</th>
+      </tr></thead><tbody>`;
+      let month = 1;
+      for (let i = 0; i < incomeArr.length; i += 4) {
+        let inc = 0, exp = 0, rep = 0, net = 0, bal = 0;
+        for (let j = 0; j < 4; j++) {
+          inc += incomeArr[i + j] || 0;
+          exp += expenditureArr[i + j] || 0;
+          rep += repaymentArr[i + j] || 0;
+          net += netArr[i + j] || 0;
+          bal = rollingArr[i + j] !== undefined ? rollingArr[i + j] : bal;
+        }
+        table += `<tr>
+          <td>${month}</td>
+          <td>€${inc.toLocaleString()}</td>
+          <td>€${exp.toLocaleString()}</td>
+          <td>€${rep.toLocaleString()}</td>
+          <td>€${net.toLocaleString()}</td>
+          <td>€${bal.toLocaleString()}</td>
+        </tr>`;
+        month++;
+      }
+      table += `</tbody></table>`;
+      monthlyTableElem.innerHTML = table;
+    }
+
+    // Optionally, render other cashflow tables here
+
+    // Update charts and summary as before
     updateChartAndSummary();
   }
 
