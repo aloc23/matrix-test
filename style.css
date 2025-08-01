@@ -297,6 +297,10 @@ tr:hover {
   margin-bottom: 10px;
   font-size: 1em;
 }
+.suggested-repayment-cell {
+  background: #e3f7e2 !important;
+  border-left: 4px solid #1976d2;
+}
 @media (max-width: 980px) {
   .container { padding: 12px 4px; }
   .roi-input-bar { flex-direction: column; align-items: flex-start; }
