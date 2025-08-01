@@ -220,7 +220,12 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function getFilteredWeekIndices() {
-    return weekLabels.map((_, idx) => idx);
+    // TODO: Replace the filter condition below with the actual filter logic as needed.
+    // Example: Only include indices where the week label is not empty.
+    return weekLabels
+      .map((label, idx) => ({ label, idx }))
+      .filter(obj => obj.label && obj.label.trim() !== "")
+      .map(obj => obj.idx);
   }
 
   function renderRepaymentRows() {
