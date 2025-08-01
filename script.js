@@ -243,7 +243,45 @@ document.addEventListener('DOMContentLoaded', function() {
     repaymentRows.forEach((row, i) => {
       const div = document.createElement('div');
       div.className = 'repayment-row';
-      div.textContent = row.type === "week" ? `${row.week}: €${row.amount}` : `${row.frequency}: €${row.amount}`;
+
+      // Editable fields
+      if (row.type === "week") {
+        // Week label
+        const weekLabel = document.createElement('span');
+        weekLabel.textContent = row.week + ": ";
+        div.appendChild(weekLabel);
+      } else {
+        // Frequency select
+        const freqSelect = document.createElement('select');
+        ["Weekly", "Monthly", "Yearly"].forEach(opt => {
+          const option = document.createElement('option');
+          option.value = opt;
+          option.textContent = opt;
+          if (row.frequency === opt) option.selected = true;
+          freqSelect.appendChild(option);
+        });
+        freqSelect.onchange = function() {
+          row.frequency = freqSelect.value;
+          updateAllTabs();
+        };
+        div.appendChild(freqSelect);
+        div.appendChild(document.createTextNode(": "));
+      }
+
+      // Amount input
+      const amountInput = document.createElement('input');
+      amountInput.type = 'number';
+      amountInput.value = row.amount;
+      amountInput.min = 0;
+      amountInput.style.width = "80px";
+      amountInput.onchange = function() {
+        row.amount = parseFloat(amountInput.value) || 0;
+        updateAllTabs();
+      };
+      div.appendChild(document.createTextNode("€"));
+      div.appendChild(amountInput);
+
+      // Remove button
       const removeBtn = document.createElement('button');
       removeBtn.textContent = 'Remove';
       removeBtn.onclick = function() {
