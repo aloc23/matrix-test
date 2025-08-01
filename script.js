@@ -190,6 +190,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!mappedData || !mappingConfigured) return [];
     let arr = [];
     for (let w = 0; w < weekLabels.length; w++) {
+      if (typeof weekCheckboxStates !== "undefined" && weekCheckboxStates[w] === false) {
+        arr[w] = 0;
+        continue;
+      }
       let absCol = config.weekColStart + w;
       let sum = 0;
       for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
