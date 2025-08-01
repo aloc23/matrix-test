@@ -288,6 +288,15 @@ tr:hover {
   padding: 2px 4px;
   font-size: 0.95em;
 }
+.alert-success {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 1em;
+}
 @media (max-width: 980px) {
   .container { padding: 12px 4px; }
   .roi-input-bar { flex-direction: column; align-items: flex-start; }
