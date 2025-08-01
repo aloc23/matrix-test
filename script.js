@@ -855,77 +855,140 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ---------- Summary Tab Functions ----------
-      <tr>
-        <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
-        <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
-        <td>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-      </tr>
-    `;
-  }
-  tableHtml += `</tbody></table>`;
+    function renderSummaryTab() {
+    // Key Financials
+    let incomeArr = getIncomeArr();
+    let expenditureArr = getExpenditureArr();
+    let repaymentArr = getRepaymentArr();
+    let rollingArr = getRollingBankBalanceArr();
+    let netArr = getNetProfitArr(incomeArr, expenditureArr, repaymentArr);
+    let totalIncome = incomeArr.reduce((a,b)=>a+(b||0),0);
+    let totalExpenditure = expenditureArr.reduce((a,b)=>a+(b||0),0);
+    let totalRepayment = repaymentArr.reduce((a,b)=>a+(b||0),0);
+    let finalBal = rollingArr[rollingArr.length-1]||0;
+    let minBal = Math.min(...rollingArr);
 
-  let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
-    <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
-    <b>NPV (${discountRate}%):</b> ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "n/a"}<br>
-    <b>IRR:</b> ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'n/a'}<br>
-    <b>Discounted Payback (periods):</b> ${payback ?? 'n/a'}`;
-
-  let badge = '';
-  if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
-  else if (irrVal > 0.08) badge = '<span class="badge badge-warning">Moderate ROI</span>';
-  else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
-  else badge = '';
-
-  document.getElementById('roiSummary').innerHTML = summary + badge;
-  document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
-
-  // Charts
-  renderRoiCharts(investment, repayments);
-
-  if (!repayments.length || repayments.reduce((a, b) => a + b, 0) === 0) {
-    document.getElementById('roiSummary').innerHTML += '<div class="alert alert-warning">No repayments scheduled. ROI cannot be calculated.</div>';
-  }
-}
-
-// ROI Performance Chart (line) + Pie chart
-function renderRoiCharts(investment, repayments) {
-  if (!Array.isArray(repayments) || repayments.length === 0) return;
-
-  // Build cumulative and discounted cumulative arrays
-  let cumArr = [];
-  let discCumArr = [];
-  let cum = 0, discCum = 0;
-  const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
-  for (let i = 0; i < repayments.length; i++) {
-    cum += repayments[i] || 0;
-    cumArr.push(cum);
-
-    // Discounted only if repayment > 0
-    if (repayments[i] > 0) {
-      discCum += repayments[i] / Math.pow(1 + discountRate / 100, i + 1);
+    // Update KPI cards if present
+    if (document.getElementById('kpiTotalIncome')) {
+      document.getElementById('kpiTotalIncome').textContent = '€' + totalIncome.toLocaleString();
+      document.getElementById('kpiTotalExpenditure').textContent = '€' + totalExpenditure.toLocaleString();
+      document.getElementById('kpiTotalRepayments').textContent = '€' + totalRepayment.toLocaleString();
+      document.getElementById('kpiFinalBank').textContent = '€' + Math.round(finalBal).toLocaleString();
+      document.getElementById('kpiLowestBank').textContent = '€' + Math.round(minBal).toLocaleString();
     }
-    discCumArr.push(discCum);
+
+    let summaryElem = document.getElementById('summaryKeyFinancials');
+    if (summaryElem) {
+      summaryElem.innerHTML = `
+        <b>Total Income:</b> €${Math.round(totalIncome).toLocaleString()}<br>
+        <b>Total Expenditure:</b> €${Math.round(totalExpenditure).toLocaleString()}<br>
+        <b>Total Repayments:</b> €${Math.round(totalRepayment).toLocaleString()}<br>
+        <b>Final Bank Balance:</b> <span style="color:${finalBal<0?'#c00':'#388e3c'}">€${Math.round(finalBal).toLocaleString()}</span><br>
+        <b>Lowest Bank Balance:</b> <span style="color:${minBal<0?'#c00':'#388e3c'}">€${Math.round(minBal).toLocaleString()}</span>
+      `;
+    }
+    // Summary Chart
+    let summaryChartElem = document.getElementById('summaryChart');
+    if (summaryChart && typeof summaryChart.destroy === "function") summaryChart.destroy();
+    if (summaryChartElem) {
+      summaryChart = new Chart(summaryChartElem.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: ["Income", "Expenditure", "Repayment", "Final Bank", "Lowest Bank"],
+          datasets: [{
+            label: "Totals",
+            data: [
+              Math.round(totalIncome),
+              -Math.round(totalExpenditure),
+              -Math.round(totalRepayment),
+              Math.round(finalBal),
+              Math.round(minBal)
+            ],
+            backgroundColor: [
+              "#4caf50","#f44336","#ffc107","#2196f3","#9c27b0"
+            ]
+          }]
+        },
+        options: {
+          responsive:true,
+          plugins:{legend:{display:false}},
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    // Tornado Chart logic
+    function renderTornadoChart() {
+      // Calculate row impact by "sum of absolute values" for each data row
+      let impact = [];
+      if (!mappedData || !mappingConfigured) return;
+      for (let r = config.firstDataRow; r <= config.lastDataRow; r++) {
+        let label = mappedData[r][0] || `Row ${r + 1}`;
+        let vals = [];
+        for (let w = 0; w < weekLabels.length; w++) {
+          if (!weekCheckboxStates[w]) continue;
+          let absCol = config.weekColStart + w;
+          let val = mappedData[r][absCol];
+          if (typeof val === "string") val = val.replace(/,/g,'').replace(/€|\s/g,'');
+          let num = parseFloat(val);
+          if (!isNaN(num)) vals.push(num);
+        }
+        let total = vals.reduce((a,b)=>a+Math.abs(b),0);
+        if (total > 0) impact.push({label, total});
+      }
+      impact.sort((a,b)=>b.total-a.total);
+      impact = impact.slice(0, 10);
+
+      let ctx = document.getElementById('tornadoChart').getContext('2d');
+      if (window.tornadoChartObj && typeof window.tornadoChartObj.destroy === "function") window.tornadoChartObj.destroy();
+      window.tornadoChartObj = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: impact.map(x=>x.label),
+          datasets: [{ label: "Total Impact (€)", data: impact.map(x=>x.total), backgroundColor: '#1976d2' }]
+        },
+        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } } }
+      });
+    }
+    renderTornadoChart();
   }
 
-  // Build X labels
-  const weekLabels = window.weekLabels || repayments.map((_, i) => `Week ${i + 1}`);
+  // -------------------- ROI/Payback Section --------------------
+function renderRoiSection() {
+  const dropdown = document.getElementById('investmentWeek');
+  if (!dropdown || !weekStartDates.length) return;
+  investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
+  const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+  const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
+  const investmentWeek = investmentWeekIndex;
+  const investmentDate = weekStartDates[investmentWeek] || null;
 
-  // ROI Performance Chart (Line)
-  let roiLineElem = document.getElementById('roiLineChart');
-  if (roiLineElem) {
-    const roiLineCtx = roiLineElem.getContext('2d');
-    if (window.roiLineChart && typeof window.roiLineChart.destroy === "function") window.roiLineChart.destroy();
-    window.roiLineChart = new Chart(roiLineCtx, {
-      type: 'line',
-      data: {
-        labels: weekLabels.slice(0, repayments.length),
-        datasets: [
-          {
-            label: "Cumulative Repayments",
-            data: cumArr,
-            borderColor: "#4caf50",
+  const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
+  const repayments = repaymentsFull.slice(investmentWeek);
+
+  const cashflows = [-investment, ...repayments];
+
+  let cashflowDates = [investmentDate];
+  for (let i = 1; i < cashflows.length; i++) {
+    let idx = investmentWeek + i;
+    cashflowDates[i] = weekStartDates[idx] || null;
+  }
+
+  function npv(rate, cashflows) {
+    if (!cashflows.length) return 0;
+    return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
+  }
+  function irr(cashflows, guess=0.1) {
+    let rate = guess, epsilon = 1e-6, maxIter = 100;
+    for (let iter=0; iter<maxIter; iter++) {
+      let npv0 = npv(rate, cashflows);
+      let npv1 = npv(rate+epsilon, cashflows);
+      let deriv = (npv1-npv0)/epsilon;
+      let newRate = rate - npv0/deriv;
+      if (!isFinite(newRate)) break;
+      if (Math.abs(newRate-rate) < 1e-7) return newRate;
+      rate = newRate;
+    }
             backgroundColor: "#4caf5040",
             fill: false,
             tension: 0.15
@@ -982,6 +1045,11 @@ function renderRoiCharts(investment, repayments) {
   }
 }
 
+// --- ROI input events ---
+document.getElementById('roiInvestmentInput').addEventListener('input', renderRoiSection);
+document.getElementById('roiInterestInput').addEventListener('input', renderRoiSection);
+document.getElementById('refreshRoiBtn').addEventListener('click', renderRoiSection);
+document.getElementById('investmentWeek').addEventListener('change', renderRoiSection);
   // -------------------- Update All Tabs --------------------
   function updateAllTabs() {
     computeSuggestedRepayments();
