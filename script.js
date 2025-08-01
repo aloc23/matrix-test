@@ -954,8 +954,77 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // -------------------- ROI/Payback Section --------------------
-      </thead>
-      <tbody>
+function renderRoiSection() {
+  const dropdown = document.getElementById('investmentWeek');
+  if (!dropdown || !weekStartDates.length) return;
+  investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
+  const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+  const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
+  const investmentWeek = investmentWeekIndex;
+  const investmentDate = weekStartDates[investmentWeek] || null;
+
+  const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
+  const repayments = repaymentsFull.slice(investmentWeek);
+
+  const cashflows = [-investment, ...repayments];
+
+  let cashflowDates = [investmentDate];
+  for (let i = 1; i < cashflows.length; i++) {
+    let idx = investmentWeek + i;
+    cashflowDates[i] = weekStartDates[idx] || null;
+  }
+
+  function npv(rate, cashflows) {
+    if (!cashflows.length) return 0;
+    return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
+  }
+  function irr(cashflows, guess=0.1) {
+    let rate = guess, epsilon = 1e-6, maxIter = 100;
+    for (let iter=0; iter<maxIter; iter++) {
+      let npv0 = npv(rate, cashflows);
+      let npv1 = npv(rate+epsilon, cashflows);
+      let deriv = (npv1-npv0)/epsilon;
+      let newRate = rate - npv0/deriv;
+      if (!isFinite(newRate)) break;
+      if (Math.abs(newRate-rate) < 1e-7) return newRate;
+      rate = newRate;
+    }
+    return NaN;
+  }
+  function npv_date(rate, cashflows, dateArr) {
+    const msPerDay = 24 * 3600 * 1000;
+    const baseDate = dateArr[0];
+    return cashflows.reduce((acc, val, i) => {
+      if (!dateArr[i]) return acc;
+      let days = (dateArr[i] - baseDate) / msPerDay;
+      let years = days / 365.25;
+      return acc + val / Math.pow(1 + rate, years);
+    }, 0);
+  }
+
+  let npvVal = (discountRate && cashflows.length > 1 && cashflowDates[0]) ?
+    npv_date(discountRate / 100, cashflows, cashflowDates) : null;
+  let irrVal = (cashflows.length > 1) ? irr(cashflows) : NaN;
+
+  let discCum = 0, payback = null;
+  for (let i = 1; i < cashflows.length; i++) {
+    let discounted = repayments[i - 1] / Math.pow(1 + discountRate / 100, i);
+    discCum += discounted;
+    if (payback === null && discCum >= investment) payback = i;
+  }
+
+  let tableHtml = `
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Date</th>
+          <th>Repayment</th>
+          <th>Cumulative</th>
+          <th>Discounted Cumulative</th>
+        </tr>   
+        </thead>
+        <tbody>
   `;
   let cum = 0, discCum2 = 0;
   for (let i = 0; i < repayments.length; i++) {
