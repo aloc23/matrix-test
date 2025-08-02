@@ -113,7 +113,20 @@ document.addEventListener('DOMContentLoaded', function() {
       for (let i = 0; i < max; i++) {
         let opt = document.createElement('option');
         opt.value = i;
-        let textVal = items && items[i] ? items[i] : (allRows[i] ? allRows[i].slice(0,8).join(',').slice(0,32) : '');
+        let textVal = '';
+        if (items && items[i]) {
+          // For column dropdowns, show the actual cell value
+          textVal = items[i].toString();
+        } else if (allRows[i]) {
+          // For row dropdowns, show the first cell (row label) or meaningful content
+          if (id === 'row') {
+            // Show the first non-empty cell as the row identifier
+            textVal = allRows[i][0] ? allRows[i][0].toString() : `Row ${i+1}`;
+          } else {
+            // Fallback to first cell for columns too
+            textVal = allRows[i][0] ? allRows[i][0].toString() : '';
+          }
+        }
         opt.textContent = `${id==='row'?'Row':'Col'} ${i+1}: ${textVal}`;
         selElem.appendChild(opt);
       }
