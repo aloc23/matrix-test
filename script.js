@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function resetSuggestions() {
     showSuggestions = false;
     lastSuggestedRepayments = null;
-    lastAchievedIRR = null;
+    lastAchievedIRR = undefined;
   }
 
   // -------------------- Integration with Mapping/Upload --------------------
