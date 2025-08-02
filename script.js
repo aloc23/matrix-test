@@ -57,8 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.querySelectorAll('.collapsible-header').forEach(btn => {
       btn.addEventListener('click', function() {
-        var content = btn.nextElementSibling;
-        var caret = btn.querySelector('.caret');
+        const content = btn.nextElementSibling;
+        const caret = btn.querySelector('.caret');
         if (content && content.classList.contains('active')) {
           content.classList.remove('active');
           if (caret) caret.style.transform = 'rotate(-90deg)';
