@@ -43,7 +43,14 @@ document.addEventListener('DOMContentLoaded', function() {
     weekLabels = weekRow.slice(config.weekColStart, config.weekColEnd+1).map(x => x || '');
     window.weekLabels = weekLabels;
     if (!weekCheckboxStates || weekCheckboxStates.length !== weekLabels.length) {
-      weekCheckboxStates = weekLabels.map(() => true);
+      // Preserve previous selections where possible
+      const prevStates = weekCheckboxStates || [];
+      const prevLabels = window.weekLabels || [];
+      weekCheckboxStates = weekLabels.map((label, idx) => {
+        // Try to find the previous index for this label
+        const prevIdx = prevLabels.indexOf(label);
+        return prevIdx !== -1 ? prevStates[prevIdx] : true;
+      });
     }
     weekStartDates = extractWeekStartDates(weekLabels, 2025);
     populateWeekDropdown(weekLabels);
