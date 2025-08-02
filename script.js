@@ -357,7 +357,13 @@ document.addEventListener('DOMContentLoaded', function() {
     weekLabels = weekRow.slice(config.weekColStart, config.weekColEnd+1).map(x => x || '');
     window.weekLabels = weekLabels; // make global for charts
     if (!weekCheckboxStates || weekCheckboxStates.length !== weekLabels.length) {
-      weekCheckboxStates = weekLabels.map(() => true);
+      // Preserve previous checkbox states by matching labels
+      const prevLabels = window.weekLabels || [];
+      const prevStates = weekCheckboxStates || [];
+      weekCheckboxStates = weekLabels.map((label, idx) => {
+        const prevIdx = prevLabels.indexOf(label);
+        return prevIdx !== -1 ? prevStates[prevIdx] : true;
+      });
     }
     populateWeekDropdown(weekLabels);
 
