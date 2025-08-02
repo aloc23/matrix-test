@@ -1228,8 +1228,9 @@ function suggestOptimalRepayments({
     const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
     const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
     const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
+    const investment = parseFloat(document.getElementById('roiInvestment').value) || 0;
     const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
-      investmentAmount: roiInvestment,
+      investmentAmount: investment,
       investmentWeekIndex,
       weekLabels,
       cashflow,
