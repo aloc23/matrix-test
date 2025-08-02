@@ -925,7 +925,19 @@ document.addEventListener('DOMContentLoaded', function() {
   // -------------------- ROI/Payback Section --------------------
 function renderRoiSection() {
   const dropdown = document.getElementById('investmentWeek');
-  if (!dropdown || !weekStartDates.length) return;
+  if (!dropdown) return;
+  
+  // Set up default week labels if none exist
+  if (!weekLabels || weekLabels.length === 0) {
+    weekLabels = Array.from({length: 52}, (_, i) => `Week ${i+1}`);
+    weekStartDates = weekLabels.map((_, i) => {
+      const startDate = new Date(2025, 0, 1); // January 1, 2025
+      startDate.setDate(startDate.getDate() + (i * 7)); // Add weeks
+      return startDate;
+    });
+    populateInvestmentWeekDropdown();
+  }
+  
   investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
   const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
   const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
@@ -942,11 +954,12 @@ function renderRoiSection() {
     let idx = investmentWeek + i;
     cashflowDates[i] = weekStartDates[idx] || null;
   }
+  
   // --- ROI Suggestions Integration with new HTML ---
-// Event listeners moved to DOMContentLoaded to avoid duplicate registration.
+  // Event listeners moved to DOMContentLoaded to avoid duplicate registration.
 
-// Also call updateSuggestedRepaymentsOverlay once on ROI tab load for initial display.
-updateSuggestedRepaymentsOverlay();
+  // Also call updateSuggestedRepaymentsOverlay once on ROI tab load for initial display.
+  updateSuggestedRepaymentsOverlay();
 
   function npv(rate, cashflows) {
     if (!cashflows.length) return 0;
@@ -986,38 +999,6 @@ updateSuggestedRepaymentsOverlay();
     discCum += discounted;
     if (payback === null && discCum >= investment) payback = i;
   }
-
-  let tableHtml = `
-    <table class="table table-sm">
-      <thead>
-        <tr>
-          <th>Period</th>
-          <th>Date</th>
-          <th>Repayment</th>
-          <th>Cumulative</th>
-          <th>Discounted Cumulative</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-  let cum = 0, discCum2 = 0;
-  for (let i = 0; i < repayments.length; i++) {
-    cum += repayments[i];
-    // Discounted cumulative only increases if repayment > 0
-    if (repayments[i] > 0) {
-      discCum2 += repayments[i] / Math.pow(1 + discountRate / 100, i + 1);
-    }
-    tableHtml += `
-      <tr>
-        <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
-        <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
-        <td>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-      </tr>
-    `;
-  }
-  tableHtml += `</tbody></table>`;
 
   let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
     <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
@@ -1323,9 +1304,24 @@ function suggestOptimalRepayments({
 
   // --- Handler for "Show Suggested Repayments" ---
   function updateSuggestedRepaymentsOverlay() {
+    // Ensure we have week labels
+    if (!weekLabels || weekLabels.length === 0) {
+      weekLabels = Array.from({length: 52}, (_, i) => `Week ${i+1}`);
+    }
+    
     const incomeArr = getIncomeArr();
     const expenditureArr = getExpenditureArr();
-    const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
+    // Create default cashflow if no mapped data
+    const cashflow = weekLabels.map((_, i) => {
+      // If we have mapped data, use it; otherwise provide default positive cashflow
+      if (incomeArr.length > 0 && expenditureArr.length > 0) {
+        return (incomeArr[i] || 0) - (expenditureArr[i] || 0);
+      } else {
+        // Default scenario: assume some positive cashflow for demonstration
+        return Math.max(1000, Math.random() * 5000);
+      }
+    });
+    
     const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
     const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
     const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
