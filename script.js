@@ -251,6 +251,10 @@ document.addEventListener('DOMContentLoaded', function() {
     saveBtn.style.margin = "10px 0";
     saveBtn.onclick = function() {
       mappingConfigured = true;
+      console.log('Mapping saved! mappingConfigured:', mappingConfigured);
+      console.log('weekLabels:', weekLabels);
+      console.log('config:', config);
+      console.log('mappedData sample:', mappedData.slice(0, 3));
       updateWeekLabels();
       updateAllTabs();
       renderMappingPanel(allRows);
