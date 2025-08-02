@@ -251,10 +251,6 @@ document.addEventListener('DOMContentLoaded', function() {
     saveBtn.style.margin = "10px 0";
     saveBtn.onclick = function() {
       mappingConfigured = true;
-      console.log('Mapping saved! mappingConfigured:', mappingConfigured);
-      console.log('weekLabels:', weekLabels);
-      console.log('config:', config);
-      console.log('mappedData sample:', mappedData.slice(0, 3));
       updateWeekLabels();
       updateAllTabs();
       renderMappingPanel(allRows);
@@ -363,15 +359,12 @@ document.addEventListener('DOMContentLoaded', function() {
     let weekRow = mappedData[config.weekLabelRow] || [];
     weekLabels = weekRow.slice(config.weekColStart, config.weekColEnd+1).map(x => x || '');
     window.weekLabels = weekLabels; // make global for charts
+    
+    // Initialize weekCheckboxStates - always default to true for all weeks
     if (!weekCheckboxStates || weekCheckboxStates.length !== weekLabels.length) {
-      // Preserve previous checkbox states by matching labels
-      const prevLabels = window.weekLabels || [];
-      const prevStates = weekCheckboxStates || [];
-      weekCheckboxStates = weekLabels.map((label, idx) => {
-        const prevIdx = prevLabels.indexOf(label);
-        return prevIdx !== -1 ? prevStates[prevIdx] : true;
-      });
+      weekCheckboxStates = weekLabels.map(() => true);
     }
+    
     populateWeekDropdown(weekLabels);
 
     // ROI week start date integration. Use a default base year (2025) or prompt user for year.
