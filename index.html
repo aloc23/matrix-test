@@ -261,26 +261,7 @@
     </section>
     <section id="roi" class="tab-content">
       <h2>ROI &amp; Payback</h2>
-      <div class="roi-input-bar" style="display:flex; gap:1em; align-items:center; margin-bottom:1em; flex-wrap:wrap;">
-        <label for="investmentWeek"><b>Investment Week:</b></label>
-        <select id="investmentWeek"></select>
-
-        <label for="roiInvestmentInput"><b>Total Investment:</b></label>
-        <input type="number" id="roiInvestmentInput" value="300000" style="width:120px; margin-right:1em;">
-
-        <label for="roiInterestInput"><b>Interest Rate (%):</b></label>
-        <input type="number" id="roiInterestInput" value="20" style="width:70px; margin-right:1em;">
-
-        <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
-        
-        <div style="margin-left: 2em; padding-left: 1em; border-left: 2px solid #ddd;">
-          <label for="toggleSuggestedSchedule" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="toggleSuggestedSchedule" style="transform:scale(1.2);">
-            <span style="font-weight: 600; color: #4caf50;">Show Advanced Repayment Planner</span>
-          </label>
-        </div>
-      </div>
-      <!-- Enhanced ROI Summary Card -->
+      <!-- Enhanced ROI Summary Card - Moved above input controls -->
       <div class="roi-summary-card" style="margin: 1.5em 0; padding: 1.5em; background: linear-gradient(135deg, #f8fbff 0%, #e3f2fd 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(25, 118, 210, 0.1); border: 1px solid #e3f2fd;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 2em; flex-wrap: wrap;">
           <!-- Actual (Input) Results - More Prominent -->
@@ -333,6 +314,26 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+      <!-- Input controls moved below actual results -->
+      <div class="roi-input-bar" style="display:flex; gap:1em; align-items:center; margin-bottom:1em; flex-wrap:wrap;">
+        <label for="investmentWeek"><b>Investment Week:</b></label>
+        <select id="investmentWeek"></select>
+
+        <label for="roiInvestmentInput"><b>Total Investment:</b></label>
+        <input type="number" id="roiInvestmentInput" value="300000" style="width:120px; margin-right:1em;">
+
+        <label for="roiInterestInput"><b>Interest Rate (%):</b></label>
+        <input type="number" id="roiInterestInput" value="20" style="width:70px; margin-right:1em;">
+
+        <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
+        
+        <div style="margin-left: 2em; padding-left: 1em; border-left: 2px solid #ddd;">
+          <label for="toggleSuggestedSchedule" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="toggleSuggestedSchedule" style="transform:scale(1.2);">
+            <span style="font-weight: 600; color: #4caf50;">Show Advanced Repayment Planner</span>
+          </label>
         </div>
       </div>
       <table class="table table-sm">
