@@ -786,7 +786,8 @@ document.addEventListener('DOMContentLoaded', function() {
   let closingArr = [];
   if (ctbody) {
     ctbody.innerHTML = '';
-    let closing = opening = openingBalance;
+    let opening = openingBalance;
+    let closing = opening;
     for (let m=0; m<months; m++) {
       let inflow = incomeMonth[m] || 0;
       let outflow = (expMonth[m] || 0) + (repayMonth[m] || 0);
