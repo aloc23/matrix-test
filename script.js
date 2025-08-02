@@ -79,22 +79,62 @@ document.addEventListener('DOMContentLoaded', function() {
     var spreadsheetUpload = document.getElementById('spreadsheetUpload');
     if (spreadsheetUpload) {
       spreadsheetUpload.addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        // Validate file type
+        const validTypes = ['.csv', '.xlsx', '.xls'];
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+        if (!validTypes.includes(fileExtension)) {
+          alert('Please select a valid file format: .csv, .xlsx, or .xls');
+          return;
+        }
+        
+        // Check file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          alert('File size too large. Please select a file smaller than 10MB.');
+          return;
+        }
+        
         const reader = new FileReader();
+        
         reader.onload = function (e) {
-          const dataArr = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(dataArr, { type: 'array' });
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-          if (!json.length) return;
-          rawData = json;
-          mappedData = json;
-          autoDetectMapping(mappedData);
-          mappingConfigured = false;
-          renderMappingPanel(mappedData);
-          updateWeekLabels();
-          updateAllTabs();
+          try {
+            const dataArr = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(dataArr, { type: 'array' });
+            
+            if (!workbook || !workbook.SheetNames || !workbook.SheetNames.length) {
+              alert('Unable to read the spreadsheet. Please check the file format.');
+              return;
+            }
+            
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            
+            if (!json || !json.length) {
+              alert('The file appears to be empty or contains no readable data.');
+              return;
+            }
+            
+            rawData = json;
+            mappedData = json;
+            autoDetectMapping(mappedData);
+            mappingConfigured = false;
+            renderMappingPanel(mappedData);
+            updateWeekLabels();
+            updateAllTabs();
+            
+          } catch (error) {
+            console.error('Error parsing spreadsheet:', error);
+            alert('Error reading the file: ' + error.message + '. Please check the file format and try again.');
+          }
         };
-        reader.readAsArrayBuffer(event.target.files[0]);
+        
+        reader.onerror = function() {
+          alert('Error reading the file. Please try again or select a different file.');
+        };
+        
+        reader.readAsArrayBuffer(file);
       });
     }
   }
