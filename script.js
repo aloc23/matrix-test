@@ -937,8 +937,7 @@ function renderRoiSection() {
     cashflowDates[i] = weekStartDates[idx] || null;
   }
   // --- ROI Suggestions Integration with new HTML ---
-document.getElementById('showSuggestedRepaymentsBtn').addEventListener('click', updateSuggestedRepaymentsOverlay);
-document.getElementById('roiTargetIrrInput').addEventListener('change', updateSuggestedRepaymentsOverlay);
+// Event listeners moved to DOMContentLoaded to avoid duplicate registration.
 
 // Also call updateSuggestedRepaymentsOverlay once on ROI tab load for initial display.
 updateSuggestedRepaymentsOverlay();
