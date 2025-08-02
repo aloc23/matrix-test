@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // ROI week/date mapping
   let weekStartDates = [];
   let investmentWeekIndex = 0;
+  
+  // Track visibility of suggested repayment schedule
+  let showSuggestedSchedule = false;
 
   // --- Chart.js chart instances for destroy ---
   let mainChart = null;
@@ -958,8 +961,21 @@ function renderRoiSection() {
   // --- ROI Suggestions Integration with new HTML ---
   // Event listeners moved to DOMContentLoaded to avoid duplicate registration.
 
-  // Also call updateSuggestedRepaymentsOverlay once on ROI tab load for initial display.
-  updateSuggestedRepaymentsOverlay();
+  // Only call updateSuggestedRepaymentsOverlay if the feature is enabled
+  if (showSuggestedSchedule) {
+    updateSuggestedRepaymentsOverlay();
+  } else {
+    // Just render the table with actual repayments only
+    const repayments = getRepaymentArr ? getRepaymentArr() : [];
+    renderPaybackTableRows({
+      repayments,
+      suggestedRepayments: null,
+      weekLabels,
+      weekStartDates,
+      tableBodyId: 'roiPaybackTableBody',
+      showSuggestedSchedule: false
+    });
+  }
 
   function npv(rate, cashflows) {
     if (!cashflows.length) return 0;
@@ -1248,44 +1264,44 @@ function suggestOptimalRepayments({
     return { suggestedRepayments, achievedIRR };
   }
 
-  function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
+  function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId, showSuggestedSchedule}) {
     let html = '';
     let actualCumulative = 0;
     let suggestedCumulative = 0;
     
     for (let i = 0; i < weekLabels.length; i++) {
       const actual = repayments[i] || 0;
-      const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : 0;
+      const suggested = (showSuggestedSchedule && suggestedRepayments && suggestedRepayments[i]) ? suggestedRepayments[i] : 0;
       
       actualCumulative += actual;
       suggestedCumulative += suggested;
       
       let repaymentCellHtml = '';
-      if (actual > 0 && suggested > 0) {
-        // Both values present - show actual prominently, suggested below
+      if (showSuggestedSchedule && actual > 0 && suggested > 0) {
+        // Both values present when showing suggestions - show actual prominently, suggested below
         repaymentCellHtml = `
           <div style="font-weight: bold; color: #1976d2; margin-bottom: 4px;">€${actual.toLocaleString()}</div>
           <div style="color: #4caf50; font-size: 0.9em;">Suggested: €${suggested.toLocaleString()}</div>
         `;
       } else if (actual > 0) {
-        // Only actual value
+        // Only actual value (either suggested is off, or no suggested value)
         repaymentCellHtml = `<span style="font-weight: bold; color: #1976d2;">€${actual.toLocaleString()}</span>`;
-      } else if (suggested > 0) {
-        // Only suggested value
+      } else if (showSuggestedSchedule && suggested > 0) {
+        // Only suggested value when suggestions are enabled
         repaymentCellHtml = `<span style="color: #4caf50; font-style: italic;">€${suggested.toLocaleString()} (suggested)</span>`;
       } else {
         repaymentCellHtml = '';
       }
       
       let cumulativeCellHtml = '';
-      if (actualCumulative > 0 && suggestedCumulative > 0) {
+      if (showSuggestedSchedule && actualCumulative > 0 && suggestedCumulative > 0) {
         cumulativeCellHtml = `
           <div style="font-weight: bold; color: #1976d2; margin-bottom: 4px;">€${actualCumulative.toLocaleString()}</div>
           <div style="color: #4caf50; font-size: 0.9em;">€${suggestedCumulative.toLocaleString()}</div>
         `;
       } else if (actualCumulative > 0) {
         cumulativeCellHtml = `<span style="font-weight: bold; color: #1976d2;">€${actualCumulative.toLocaleString()}</span>`;
-      } else if (suggestedCumulative > 0) {
+      } else if (showSuggestedSchedule && suggestedCumulative > 0) {
         cumulativeCellHtml = `<span style="color: #4caf50;">€${suggestedCumulative.toLocaleString()}</span>`;
       }
 
@@ -1304,49 +1320,60 @@ function suggestOptimalRepayments({
 
   // --- Handler for "Show Suggested Repayments" ---
   function updateSuggestedRepaymentsOverlay() {
-    // Ensure we have week labels
-    if (!weekLabels || weekLabels.length === 0) {
-      weekLabels = Array.from({length: 52}, (_, i) => `Week ${i+1}`);
-    }
-    
-    const incomeArr = getIncomeArr();
-    const expenditureArr = getExpenditureArr();
-    // Create default cashflow if no mapped data
-    const cashflow = weekLabels.map((_, i) => {
-      // If we have mapped data, use it; otherwise provide default positive cashflow
-      if (incomeArr.length > 0 && expenditureArr.length > 0) {
-        return (incomeArr[i] || 0) - (expenditureArr[i] || 0);
-      } else {
-        // Default scenario: assume some positive cashflow for demonstration
-        return Math.max(1000, Math.random() * 5000);
-      }
-    });
-    
-    const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
-    const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
-    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
-    const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
-    const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
-      investmentAmount: investment,
-      investmentWeekIndex,
-      weekLabels,
-      cashflow,
-      openingBalance,
-      targetIRR
-    });
-
     const repayments = getRepaymentArr();
+    
+    let suggestedRepayments = null;
+    let achievedIRR = null;
+    
+    // Only calculate suggested repayments if the feature is enabled
+    if (showSuggestedSchedule) {
+      // Ensure we have week labels
+      if (!weekLabels || weekLabels.length === 0) {
+        weekLabels = Array.from({length: 52}, (_, i) => `Week ${i+1}`);
+      }
+      
+      const incomeArr = getIncomeArr();
+      const expenditureArr = getExpenditureArr();
+      // Create default cashflow if no mapped data
+      const cashflow = weekLabels.map((_, i) => {
+        // If we have mapped data, use it; otherwise provide default positive cashflow
+        if (incomeArr.length > 0 && expenditureArr.length > 0) {
+          return (incomeArr[i] || 0) - (expenditureArr[i] || 0);
+        } else {
+          // Default scenario: assume some positive cashflow for demonstration
+          return Math.max(1000, Math.random() * 5000);
+        }
+      });
+      
+      const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
+      const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
+      const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+      
+      const result = suggestOptimalRepayments({
+        investmentAmount: investment,
+        investmentWeekIndex,
+        weekLabels,
+        cashflow,
+        openingBalance,
+        targetIRR
+      });
+      
+      suggestedRepayments = result.suggestedRepayments;
+      achievedIRR = result.achievedIRR;
+      
+      // Update the suggested results display in the summary card
+      const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
+      updateSuggestedResultsDisplay(suggestedRepayments, achievedIRR, investment, discountRate);
+    }
 
     renderPaybackTableRows({
       repayments,
       suggestedRepayments,
       weekLabels,
       weekStartDates,
-      tableBodyId: 'roiPaybackTableBody'
+      tableBodyId: 'roiPaybackTableBody',
+      showSuggestedSchedule
     });
-
-    // Update the suggested results display in the summary card
-    updateSuggestedResultsDisplay(suggestedRepayments, achievedIRR, investment, discountRate);
   }
 
   // --- Wire up to button/input ---
@@ -1355,8 +1382,22 @@ function suggestOptimalRepayments({
   const irrInput = document.getElementById('roiTargetIrrInput');
   if (irrInput) irrInput.addEventListener('change', updateSuggestedRepaymentsOverlay);
 
-  // --- Optionally: render suggestions on initial load for convenience ---
-  updateSuggestedRepaymentsOverlay();
+  // --- Wire up toggle for suggested schedule ---
+  const toggleBtn = document.getElementById('toggleSuggestedSchedule');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('change', function() {
+      showSuggestedSchedule = this.checked;
+      const suggestedSection = document.getElementById('suggestedResultsSection');
+      if (suggestedSection) {
+        suggestedSection.style.display = showSuggestedSchedule ? 'block' : 'none';
+      }
+      // Update the table display
+      updateSuggestedRepaymentsOverlay();
+    });
+  }
+
+  // --- Initial load: don't show suggestions by default ---
+  // updateSuggestedRepaymentsOverlay(); // Removed to avoid auto-showing suggestions
 
   // ... rest of your script (updateAllTabs, etc) ...
   function updateAllTabs() {
@@ -1395,11 +1436,28 @@ function suggestOptimalRepayments({
     } catch (e) {
       console.error('Error in renderTornadoChart:', e);
     }
-    // Optionally show suggestions each time:
-    try {
-      updateSuggestedRepaymentsOverlay();
-    } catch (e) {
-      console.error('Error in updateSuggestedRepaymentsOverlay:', e);
+    // Show suggestions only if toggle is enabled:
+    if (showSuggestedSchedule) {
+      try {
+        updateSuggestedRepaymentsOverlay();
+      } catch (e) {
+        console.error('Error in updateSuggestedRepaymentsOverlay:', e);
+      }
+    } else {
+      // Just update table with actual repayments only
+      try {
+        const repayments = getRepaymentArr();
+        renderPaybackTableRows({
+          repayments,
+          suggestedRepayments: null,
+          weekLabels,
+          weekStartDates,
+          tableBodyId: 'roiPaybackTableBody',
+          showSuggestedSchedule: false
+        });
+      } catch (e) {
+        console.error('Error in renderPaybackTableRows:', e);
+      }
     }
   }
   updateAllTabs();
