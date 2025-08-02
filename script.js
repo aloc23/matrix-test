@@ -49,8 +49,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.subtabs button').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         document.querySelectorAll('.subtab-panel').forEach(sec => sec.classList.remove('active'));
-        var subtabId = 'subtab-' + btn.getAttribute('data-subtab');
-        var subpanel = document.getElementById(subtabId);
+        const subtabId = 'subtab-' + btn.getAttribute('data-subtab');
+        const subpanel = document.getElementById(subtabId);
         if (subpanel) subpanel.classList.add('active');
         setTimeout(updateAllTabs, 50);
       });
