@@ -265,7 +265,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
     const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
     const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
-    const cashflows = [-investment, ...repayments];
+    // Construct cashflows array with investment at the correct week index
+    const cashflows = Array(weekLabels.length).fill(0);
+    if (investmentWeekIndex >= 0 && investmentWeekIndex < cashflows.length) {
+      cashflows[investmentWeekIndex] = -investment;
+    }
+    // Add repayments (assumed to be aligned to weeks)
+    for (let i = 0; i < repayments.length; i++) {
+      cashflows[i] += repayments[i];
+    }
 
     // Use the canonical computeIRR function for IRR calculation
 
