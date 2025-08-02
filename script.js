@@ -267,20 +267,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
     const cashflows = [-investment, ...repayments];
 
-    function irr(cashflows, guess=0.1) {
-      let rate = guess, epsilon = 1e-6, maxIter = 100;
-      for (let iter=0; iter<maxIter; iter++) {
-        let npv0 = cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
-        let npv1 = cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate+epsilon, i), 0);
-        let deriv = (npv1-npv0)/epsilon;
-        let newRate = rate - npv0/deriv;
-        if (!isFinite(newRate)) break;
-        if (Math.abs(newRate-rate) < 1e-7) return newRate;
-        rate = newRate;
-      }
-      return NaN;
-    }
-    const actualIrr = irr(cashflows);
+    // Use the canonical computeIRR function for IRR calculation
+
+
+
+
+
+
+
+
+
+
+
+
+    const actualIrr = computeIRR(cashflows);
     document.getElementById('actualIrrResult').innerText = (isFinite(actualIrr) && !isNaN(actualIrr)) ? (actualIrr*100).toFixed(2) + "%" : "n/a";
     document.getElementById('actualRepaymentsResult').innerText = "€" + repayments.reduce((a,b)=>a+b,0).toLocaleString();
 
