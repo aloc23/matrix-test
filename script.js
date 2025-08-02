@@ -953,17 +953,50 @@ updateSuggestedRepaymentsOverlay();
     return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
   }
   function irr(cashflows, guess=0.1) {
-    let rate = guess, epsilon = 1e-6, maxIter = 100;
-    for (let iter=0; iter<maxIter; iter++) {
+    if (!cashflows || cashflows.length < 2) return NaN;
+    
+    // Check if all cashflows are the same sign (no return possible)
+    const hasPositive = cashflows.some(cf => cf > 0);
+    const hasNegative = cashflows.some(cf => cf < 0);
+    if (!hasPositive || !hasNegative) return NaN;
+    
+    let rate = guess, epsilon = 1e-8, maxIter = 200;
+    let bestRate = rate, bestNPV = Infinity;
+    
+    for (let iter = 0; iter < maxIter; iter++) {
       let npv0 = npv(rate, cashflows);
-      let npv1 = npv(rate+epsilon, cashflows);
-      let deriv = (npv1-npv0)/epsilon;
-      let newRate = rate - npv0/deriv;
+      let npv1 = npv(rate + epsilon, cashflows);
+      
+      // Track best solution
+      if (Math.abs(npv0) < Math.abs(bestNPV)) {
+        bestNPV = npv0;
+        bestRate = rate;
+      }
+      
+      if (Math.abs(npv0) < 1e-10) return rate; // Converged
+      
+      let deriv = (npv1 - npv0) / epsilon;
+      if (!isFinite(deriv) || Math.abs(deriv) < 1e-15) break;
+      
+      let newRate = rate - npv0 / deriv;
+      
+      // Bounds checking and step limiting
       if (!isFinite(newRate)) break;
-      if (Math.abs(newRate-rate) < 1e-7) return newRate;
+      if (newRate < -0.99) newRate = -0.99; // Prevent extreme negative rates
+      if (newRate > 10) newRate = 10; // Prevent extreme positive rates
+      
+      // Step size limiting for stability
+      const maxStep = 0.5;
+      if (Math.abs(newRate - rate) > maxStep) {
+        newRate = rate + Math.sign(newRate - rate) * maxStep;
+      }
+      
+      if (Math.abs(newRate - rate) < 1e-12) break;
       rate = newRate;
     }
-    return NaN;
+    
+    // Return best found solution if within reasonable bounds
+    return Math.abs(bestNPV) < 0.01 ? bestRate : NaN;
   }
   function npv_date(rate, cashflows, dateArr) {
     const msPerDay = 24 * 3600 * 1000;
@@ -1019,20 +1052,60 @@ updateSuggestedRepaymentsOverlay();
   }
   tableHtml += `</tbody></table>`;
 
-  let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
-    <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
-    <b>NPV (${discountRate}%):</b> ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "n/a"}<br>
-    <b>IRR:</b> ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'n/a'}<br>
-    <b>Discounted Payback (periods):</b> ${payback ?? 'n/a'}`;
+  let summary = `<div style="background: #f8f9fa; padding: 1.5em; border-radius: 8px; margin: 1em 0;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin-bottom: 1em;">
+      <div><b>Total Investment:</b> €${investment.toLocaleString()}</div>
+      <div><b>Investment Week:</b> ${weekLabels[investmentWeek] || `Week ${investmentWeek + 1}`}</div>
+      <div><b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}</div>
+      <div><b>Discount Rate:</b> ${discountRate}%</div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; text-align: center;">
+      <div style="background: white; padding: 1em; border-radius: 6px; border-left: 4px solid #2196f3;">
+        <div style="font-size: 0.9em; color: #666;">NPV</div>
+        <div style="font-size: 1.2em; font-weight: bold; color: ${npvVal > 0 ? '#4caf50' : '#f44336'};">
+          ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A"}
+        </div>
+      </div>
+      <div style="background: white; padding: 1em; border-radius: 6px; border-left: 4px solid ${irrVal > 0.15 ? '#4caf50' : irrVal > 0.08 ? '#ff9800' : '#f44336'};">
+        <div style="font-size: 0.9em; color: #666;">IRR</div>
+        <div style="font-size: 1.2em; font-weight: bold;">
+          ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'N/A'}
+        </div>
+      </div>
+      <div style="background: white; padding: 1em; border-radius: 6px; border-left: 4px solid #9c27b0;">
+        <div style="font-size: 0.9em; color: #666;">Payback Period</div>
+        <div style="font-size: 1.2em; font-weight: bold;">
+          ${payback ? `${payback} periods` : 'N/A'}
+        </div>
+      </div>
+    </div>
+  </div>`;
 
   let badge = '';
-  if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
-  else if (irrVal > 0.08) badge = '<span class="badge badge-warning">Moderate ROI</span>';
-  else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
-  else badge = '';
+  if (irrVal > 0.15) badge = '<div style="display: inline-block; background: #4caf50; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.9em; margin-top: 0.5em;">🎯 Attractive ROI</div>';
+  else if (irrVal > 0.08) badge = '<div style="display: inline-block; background: #ff9800; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.9em; margin-top: 0.5em;">⚠️ Moderate ROI</div>';
+  else if (!isNaN(irrVal) && irrVal > 0) badge = '<div style="display: inline-block; background: #f44336; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.9em; margin-top: 0.5em;">❌ Low ROI</div>';
+  else badge = '<div style="display: inline-block; background: #757575; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.9em; margin-top: 0.5em;">❓ Insufficient Data</div>';
 
   document.getElementById('roiSummary').innerHTML = summary + badge;
   document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
+
+  // Update Actual IRR and Total Repayments display
+  let actualIRRDisplay = document.getElementById('actualIrrResult');
+  let actualRepaymentsDisplay = document.getElementById('actualRepaymentsResult');
+  
+  if (actualIRRDisplay) {
+    if (isFinite(irrVal) && !isNaN(irrVal)) {
+      actualIRRDisplay.innerHTML = `<span style="color: ${irrVal > 0.12 ? '#4caf50' : irrVal > 0.08 ? '#ff9800' : '#f44336'}; font-weight: bold;">${(irrVal * 100).toFixed(2)}%</span>`;
+    } else {
+      actualIRRDisplay.textContent = '--';
+    }
+  }
+  
+  if (actualRepaymentsDisplay) {
+    const totalRepayments = repayments.reduce((a, b) => a + b, 0);
+    actualRepaymentsDisplay.innerHTML = `<span style="font-weight: bold;">€${totalRepayments.toLocaleString()}</span>`;
+  }
 
   // Charts
   renderRoiCharts(investment, repayments);
@@ -1158,44 +1231,148 @@ function suggestOptimalRepayments({
     let suggestedRepayments = Array(weekLabels.length).fill(null);
 
     function computeIRR(cf, guess = 0.1) {
-      let maxIter = 30, tol = 1e-7;
-      let rate = guess;
+      if (!cf || cf.length < 2) return NaN;
+      
+      const hasPositive = cf.some(val => val > 0);
+      const hasNegative = cf.some(val => val < 0);
+      if (!hasPositive || !hasNegative) return NaN;
+      
+      let rate = guess, epsilon = 1e-8, maxIter = 150;
+      let bestRate = rate, bestNPV = Infinity;
+      
       for (let k = 0; k < maxIter; k++) {
         let npv = 0, d_npv = 0;
         for (let j = 0; j < cf.length; j++) {
-          npv += cf[j] / Math.pow(1 + rate, j);
+          const factor = Math.pow(1 + rate, j);
+          npv += cf[j] / factor;
           if (j > 0) d_npv -= j * cf[j] / Math.pow(1 + rate, j + 1);
         }
-        if (Math.abs(npv) < tol) return rate;
-        if (!isFinite(d_npv) || d_npv === 0) break;
-        rate = rate - npv / d_npv;
+        
+        // Track best solution
+        if (Math.abs(npv) < Math.abs(bestNPV)) {
+          bestNPV = npv;
+          bestRate = rate;
+        }
+        
+        if (Math.abs(npv) < 1e-10) return rate;
+        if (!isFinite(d_npv) || Math.abs(d_npv) < 1e-15) break;
+        
+        let newRate = rate - npv / d_npv;
+        
+        // Bounds and step limiting
+        if (!isFinite(newRate)) break;
+        if (newRate < -0.99) newRate = -0.99;
+        if (newRate > 10) newRate = 10;
+        
+        const maxStep = 0.3;
+        if (Math.abs(newRate - rate) > maxStep) {
+          newRate = rate + Math.sign(newRate - rate) * maxStep;
+        }
+        
+        if (Math.abs(newRate - rate) < 1e-12) break;
+        rate = newRate;
       }
-      return rate;
+      
+      return Math.abs(bestNPV) < 0.01 ? bestRate : NaN;
     }
 
+    // Enhanced repayment strategy with multiple approaches
     let totalToRepay = investmentAmount;
     let simulatedBank = openingBalance;
     let tempCF = cfs.slice();
     let repayments = Array(weekLabels.length).fill(0);
     let remaining = totalToRepay;
 
-    for (let w of repaymentWeeks) {
-      let maxRepay = Math.max(0, simulatedBank + tempCF[w]);
-      let pay = Math.min(maxRepay, remaining);
-      repayments[w] = pay;
-      tempCF[w] -= pay;
-      simulatedBank += tempCF[w];
-      remaining -= pay;
-      if (remaining <= 1e-6) break;
+    // Strategy 1: Prioritize weeks with highest cashflow availability
+    let weekPriorities = repaymentWeeks.map(w => ({
+      week: w,
+      availableCash: Math.max(0, simulatedBank + tempCF[w]),
+      cashflowStrength: tempCF[w] || 0
+    })).sort((a, b) => b.availableCash - a.availableCash);
+
+    // Strategy 2: Balanced approach considering time value and cash availability
+    let totalAvailable = weekPriorities.reduce((sum, wp) => sum + wp.availableCash, 0);
+    
+    if (totalAvailable >= remaining) {
+      // Distribute proportionally based on availability and time preference
+      for (let wp of weekPriorities) {
+        if (remaining <= 1e-6) break;
+        
+        // Weight earlier payments slightly higher for better IRR
+        let timeWeight = 1 + (weekLabels.length - wp.week) / weekLabels.length * 0.2;
+        let allocation = Math.min(
+          wp.availableCash * timeWeight,
+          remaining * (wp.availableCash / totalAvailable) * 1.2
+        );
+        
+        allocation = Math.min(allocation, remaining);
+        if (allocation > 1) {
+          repayments[wp.week] = allocation;
+          remaining -= allocation;
+        }
+      }
+    } else {
+      // Insufficient funds - use all available cash
+      for (let wp of weekPriorities) {
+        if (remaining <= 1e-6) break;
+        let allocation = Math.min(wp.availableCash, remaining);
+        if (allocation > 1) {
+          repayments[wp.week] = allocation;
+          remaining -= allocation;
+        }
+      }
+    }
+
+    // Strategy 3: Try to optimize for target IRR if possible
+    if (targetIRR && targetIRR > 0) {
+      let attempts = 0;
+      while (attempts < 5) {
+        let cfWithRepayments = cfs.slice();
+        repayments.forEach((amt, idx) => { 
+          cfWithRepayments[idx] = (cfWithRepayments[idx] || 0) - amt; 
+        });
+        
+        let currentIRR = computeIRR(cfWithRepayments);
+        if (!isFinite(currentIRR)) break;
+        
+        let irrDiff = currentIRR - targetIRR;
+        if (Math.abs(irrDiff) < 0.01) break; // Close enough
+        
+        // Adjust payments to move towards target
+        if (irrDiff < 0) {
+          // Need higher IRR - try to front-load payments
+          for (let i = 0; i < repaymentWeeks.length - 2; i++) {
+            let w1 = repaymentWeeks[i];
+            let w2 = repaymentWeeks[i + 1];
+            if (repayments[w2] > 10) {
+              let shift = Math.min(repayments[w2] * 0.1, 1000);
+              repayments[w1] += shift;
+              repayments[w2] -= shift;
+            }
+          }
+        } else {
+          // IRR too high - try to back-load payments
+          for (let i = repaymentWeeks.length - 1; i > 1; i--) {
+            let w1 = repaymentWeeks[i - 1];
+            let w2 = repaymentWeeks[i];
+            if (repayments[w1] > 10) {
+              let shift = Math.min(repayments[w1] * 0.1, 1000);
+              repayments[w2] += shift;
+              repayments[w1] -= shift;
+            }
+          }
+        }
+        attempts++;
+      }
     }
 
     let cfWithRepayments = cfs.slice();
     repayments.forEach((amt, idx) => { cfWithRepayments[idx] = (cfWithRepayments[idx] || 0) - amt; });
     let achievedIRR = computeIRR(cfWithRepayments);
 
-    suggestedRepayments = repayments.map(r => r > 0 ? r : null);
+    suggestedRepayments = repayments.map(r => r > 0 ? Math.round(r) : null);
 
-    return { suggestedRepayments, achievedIRR };
+    return { suggestedRepayments, achievedIRR: achievedIRR || 0 };
   }
 
   function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
@@ -1259,9 +1436,159 @@ function suggestOptimalRepayments({
       irrDisplay.innerHTML = `Achievable IRR: <b>${(achievedIRR*100).toFixed(2)}%</b> ${Math.abs(achievedIRR - targetIRR) < 0.005 ? '<span class="badge badge-success">Target Met</span>' : '<span class="badge badge-warning">Best possible</span>'}`;
   }
 
+  // --- Modal installment selection ---
+  function createInstallmentSelectionModal() {
+    const modal = document.createElement('div');
+    modal.id = 'installmentModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.5); z-index: 1000; display: none;
+      justify-content: center; align-items: center;
+    `;
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.cssText = `
+      background: white; padding: 2em; border-radius: 8px; max-width: 600px; width: 90%;
+      max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    `;
+    
+    modalContent.innerHTML = `
+      <h3>Select Investment & Repayment Schedule</h3>
+      <div style="margin: 1em 0;">
+        <label style="display: block; margin-bottom: 0.5em;"><b>Investment Week:</b></label>
+        <select id="modalInvestmentWeek" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </select>
+      </div>
+      <div style="margin: 1em 0;">
+        <label style="display: block; margin-bottom: 0.5em;"><b>Investment Amount (€):</b></label>
+        <input type="number" id="modalInvestmentAmount" value="300000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+      </div>
+      <div style="margin: 1em 0;">
+        <label style="display: block; margin-bottom: 0.5em;"><b>Target IRR (%):</b></label>
+        <input type="number" id="modalTargetIRR" value="12" min="0" max="100" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+      </div>
+      <div style="margin: 1em 0;">
+        <h4>Suggested Repayment Schedule:</h4>
+        <div id="modalRepaymentSuggestions" style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 1em; margin: 0.5em 0;"></div>
+        <div id="modalIrrResult" style="margin: 0.5em 0; font-weight: bold;"></div>
+      </div>
+      <div style="text-align: right; margin-top: 1.5em;">
+        <button id="modalApplyBtn" style="background: #4caf50; color: white; border: none; padding: 8px 16px; border-radius: 4px; margin-right: 8px; cursor: pointer;">Apply Schedule</button>
+        <button id="modalCancelBtn" style="background: #757575; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+      </div>
+    `;
+    
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // Modal event handlers
+    document.getElementById('modalCancelBtn').addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+    
+    document.getElementById('modalApplyBtn').addEventListener('click', () => {
+      const investmentWeek = parseInt(document.getElementById('modalInvestmentWeek').value, 10) || 0;
+      const investmentAmount = parseFloat(document.getElementById('modalInvestmentAmount').value) || 0;
+      const targetIRR = parseFloat(document.getElementById('modalTargetIRR').value) || 0;
+      
+      // Apply to main form
+      document.getElementById('investmentWeek').value = investmentWeek;
+      document.getElementById('roiInvestmentInput').value = investmentAmount;
+      document.getElementById('roiTargetIrrInput').value = targetIRR;
+      
+      modal.style.display = 'none';
+      renderRoiSection();
+      updateSuggestedRepaymentsOverlay();
+    });
+    
+    // Close modal on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.style.display = 'none';
+    });
+    
+    return modal;
+  }
+  
+  // Create modal on first load
+  const installmentModal = createInstallmentSelectionModal();
+  
+  function showInstallmentModal() {
+    const modal = document.getElementById('installmentModal');
+    
+    // Populate investment week options
+    const modalWeekSelect = document.getElementById('modalInvestmentWeek');
+    modalWeekSelect.innerHTML = '';
+    weekLabels.forEach((label, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = label || `Week ${i + 1}`;
+      modalWeekSelect.appendChild(opt);
+    });
+    
+    // Set current values
+    modalWeekSelect.value = document.getElementById('investmentWeek').value || 0;
+    document.getElementById('modalInvestmentAmount').value = document.getElementById('roiInvestmentInput').value || 300000;
+    document.getElementById('modalTargetIRR').value = document.getElementById('roiTargetIrrInput').value || 12;
+    
+    // Update suggestions
+    updateModalSuggestions();
+    
+    modal.style.display = 'flex';
+  }
+  
+  function updateModalSuggestions() {
+    const investmentAmount = parseFloat(document.getElementById('modalInvestmentAmount').value) || 0;
+    const investmentWeekIndex = parseInt(document.getElementById('modalInvestmentWeek').value, 10) || 0;
+    const targetIRR = parseFloat(document.getElementById('modalTargetIRR').value) / 100 || 0.12;
+    
+    const incomeArr = getIncomeArr();
+    const expenditureArr = getExpenditureArr();
+    const cashflow = weekLabels.map((_, i) => (incomeArr[i] || 0) - (expenditureArr[i] || 0));
+    
+    const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
+      investmentAmount,
+      investmentWeekIndex,
+      weekLabels,
+      cashflow,
+      openingBalance,
+      targetIRR
+    });
+    
+    // Display suggestions
+    const suggestionsDiv = document.getElementById('modalRepaymentSuggestions');
+    let html = '<table style="width: 100%; font-size: 0.9em;"><thead><tr><th>Week</th><th>Suggested Repayment</th></tr></thead><tbody>';
+    
+    suggestedRepayments.forEach((amount, i) => {
+      if (amount && amount > 0) {
+        html += `<tr><td>${weekLabels[i] || `Week ${i + 1}`}</td><td style="text-align: right;">€${amount.toLocaleString()}</td></tr>`;
+      }
+    });
+    
+    html += '</tbody></table>';
+    suggestionsDiv.innerHTML = html;
+    
+    const irrResult = document.getElementById('modalIrrResult');
+    const irrDiff = Math.abs(achievedIRR - targetIRR);
+    const badge = irrDiff < 0.005 ? '<span style="background: #4caf50; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;">Target Achieved</span>' 
+                                   : '<span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;">Best Possible</span>';
+    irrResult.innerHTML = `Achievable IRR: <b>${(achievedIRR * 100).toFixed(2)}%</b> ${badge}`;
+  }
+  
+  // Event listeners for modal inputs
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'modalInvestmentAmount' || e.target.id === 'modalInvestmentWeek' || e.target.id === 'modalTargetIRR') {
+      updateModalSuggestions();
+    }
+  });
+  
   // --- Wire up to button/input ---
   const showBtn = document.getElementById('showSuggestedRepaymentsBtn');
-  if (showBtn) showBtn.addEventListener('click', updateSuggestedRepaymentsOverlay);
+  if (showBtn) {
+    showBtn.textContent = 'Advanced Repayment Planner';
+    showBtn.addEventListener('click', showInstallmentModal);
+  }
   const irrInput = document.getElementById('roiTargetIrrInput');
   if (irrInput) irrInput.addEventListener('change', updateSuggestedRepaymentsOverlay);
 
