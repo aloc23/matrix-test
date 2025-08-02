@@ -667,7 +667,7 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         {
           label: "Net Profit",
-          data: filteredWeeks.map((_, i) => netProfitArr[filteredWeeks[i]] || 0),
+          data: filteredWeeks.map((_, i) => netProfitArr[i] || 0),
           backgroundColor: "rgba(33,150,243,0.3)",
           borderColor: "#1976d2",
           type: "line",
