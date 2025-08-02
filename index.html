@@ -4,13 +4,124 @@
   <meta charset="UTF-8">
   <title>MATRIX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- External libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- External libraries - commented out due to CDN blocking -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script> -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script> -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script> -->
+  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> -->
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,700&display=swap" rel="stylesheet">
+  <!-- <link href="https://fonts.googleapis.com/css?family=Montserrat:400,700&display=swap" rel="stylesheet"> -->
+  <!-- Fallback implementations for blocked CDN dependencies -->
+  <script>
+    // Minimal Chart.js fallback
+    window.Chart = function(ctx, config) {
+      this.ctx = ctx;
+      this.config = config;
+      this.destroy = function() {};
+      // Create a simple visual representation
+      this.render = function() {
+        const canvas = ctx.canvas;
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#f8f9fa';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw title
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        const title = config.type || 'Chart';
+        ctx.fillText(title.charAt(0).toUpperCase() + title.slice(1) + ' Chart', width/2, 30);
+        
+        // Draw data summary
+        const datasets = config.data?.datasets || [];
+        const labels = config.data?.labels || [];
+        
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Labels: ${labels.length}`, 20, 60);
+        ctx.fillText(`Datasets: ${datasets.length}`, 20, 80);
+        
+        // Draw simple bars if it's a bar chart
+        if (config.type === 'bar' && datasets.length > 0) {
+          const data = datasets[0].data || [];
+          const maxVal = Math.max(...data, 1);
+          const barWidth = (width - 40) / data.length;
+          
+          data.forEach((val, i) => {
+            const barHeight = (val / maxVal) * (height - 120);
+            const x = 20 + i * barWidth;
+            const y = height - 20 - barHeight;
+            
+            ctx.fillStyle = datasets[0].backgroundColor || '#4CAF50';
+            ctx.fillRect(x, y, barWidth - 2, barHeight);
+            
+            // Label
+            ctx.fillStyle = '#333';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(val.toString(), x + barWidth/2, y - 5);
+          });
+        }
+      };
+      this.render();
+      return this;
+    };
+    
+    // Minimal XLSX fallback for CSV reading
+    window.XLSX = {
+      read: function(data, options) {
+        try {
+          // Simple CSV parser for basic functionality
+          const text = new TextDecoder().decode(data);
+          const lines = text.split('\n').filter(line => line.trim().length > 0);
+          const result = lines.map(line => {
+            // Handle CSV with proper parsing
+            const cells = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                const trimmed = current.trim().replace(/^"|"$/g, '');
+                const num = parseFloat(trimmed);
+                cells.push(isNaN(num) ? trimmed : num);
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            // Don't forget the last cell
+            const trimmed = current.trim().replace(/^"|"$/g, '');
+            const num = parseFloat(trimmed);
+            cells.push(isNaN(num) ? trimmed : num);
+            
+            return cells;
+          });
+          
+          return {
+            SheetNames: ['Sheet1'],
+            Sheets: { 'Sheet1': result }
+          };
+        } catch (e) {
+          console.warn('CSV parsing failed:', e);
+          return { SheetNames: ['Sheet1'], Sheets: { 'Sheet1': [] } };
+        }
+      },
+      utils: {
+        sheet_to_json: function(sheet, options) {
+          if (Array.isArray(sheet)) return sheet;
+          return [];
+        }
+      }
+    };
+  </script>
 </head>
 <body>
   <div class="header">
