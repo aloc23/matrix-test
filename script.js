@@ -36,8 +36,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         document.querySelectorAll('.tab-content').forEach(sec => sec.classList.remove('active'));
-        var tabId = btn.getAttribute('data-tab');
-        var panel = document.getElementById(tabId);
+        const tabId = btn.getAttribute('data-tab');
+        const panel = document.getElementById(tabId);
         if (panel) panel.classList.add('active');
         setTimeout(() => {
           updateAllTabs();
