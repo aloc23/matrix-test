@@ -1265,15 +1265,47 @@ function suggestOptimalRepayments({
 
   // ... rest of your script (updateAllTabs, etc) ...
   function updateAllTabs() {
-    renderRepaymentRows();
-    updateLoanSummary();
-    updateChartAndSummary();
-    renderPnlTables();
-    renderSummaryTab();
-    renderRoiSection();
-    renderTornadoChart();
+    try {
+      renderRepaymentRows();
+    } catch (e) {
+      console.error('Error in renderRepaymentRows:', e);
+    }
+    try {
+      updateLoanSummary();
+    } catch (e) {
+      console.error('Error in updateLoanSummary:', e);
+    }
+    try {
+      updateChartAndSummary();
+    } catch (e) {
+      console.error('Error in updateChartAndSummary:', e);
+    }
+    try {
+      renderPnlTables();
+    } catch (e) {
+      console.error('Error in renderPnlTables:', e);
+    }
+    try {
+      renderSummaryTab();
+    } catch (e) {
+      console.error('Error in renderSummaryTab:', e);
+    }
+    try {
+      renderRoiSection();
+    } catch (e) {
+      console.error('Error in renderRoiSection:', e);
+    }
+    try {
+      renderTornadoChart();
+    } catch (e) {
+      console.error('Error in renderTornadoChart:', e);
+    }
     // Optionally show suggestions each time:
-    updateSuggestedRepaymentsOverlay();
+    try {
+      updateSuggestedRepaymentsOverlay();
+    } catch (e) {
+      console.error('Error in updateSuggestedRepaymentsOverlay:', e);
+    }
   }
   updateAllTabs();
 });
