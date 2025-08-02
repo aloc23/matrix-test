@@ -1031,8 +1031,11 @@ updateSuggestedRepaymentsOverlay();
   else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
   else badge = '';
 
+  // Update the new summary card with actual results
+  updateActualResultsDisplay(npvVal, irrVal, repayments.reduce((a, b) => a + b, 0), payback);
+
   document.getElementById('roiSummary').innerHTML = summary + badge;
-  document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
+  // The table body will be updated by updateSuggestedRepaymentsOverlay
 
   // Charts
   renderRoiCharts(investment, repayments);
@@ -1135,6 +1138,72 @@ function renderRoiCharts(investment, repayments) {
   }
 }
 
+// Function to update the actual results display in the summary card
+function updateActualResultsDisplay(npv, irr, totalRepayments, paybackPeriods) {
+  const npvElem = document.getElementById('actualNpvResult');
+  const irrElem = document.getElementById('actualIrrResult');
+  const repaymentsElem = document.getElementById('actualRepaymentsResult');
+  const paybackElem = document.getElementById('actualPaybackResult');
+
+  if (npvElem) {
+    npvElem.textContent = typeof npv === "number" ? `€${npv.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : 'n/a';
+  }
+  if (irrElem) {
+    irrElem.textContent = isFinite(irr) && !isNaN(irr) ? `${(irr * 100).toFixed(2)}%` : 'n/a';
+  }
+  if (repaymentsElem) {
+    repaymentsElem.textContent = `€${totalRepayments.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  }
+  if (paybackElem) {
+    paybackElem.textContent = paybackPeriods !== null ? `${paybackPeriods} periods` : 'n/a';
+  }
+}
+
+// Function to update the suggested results display in the summary card
+function updateSuggestedResultsDisplay(suggestedRepayments, achievedIRR, investment, discountRate) {
+  const npvElem = document.getElementById('suggestedNpvResult');
+  const irrElem = document.getElementById('suggestedIrrResult');
+  const repaymentsElem = document.getElementById('suggestedRepaymentsResult');
+  const paybackElem = document.getElementById('suggestedPaybackResult');
+
+  // Calculate NPV for suggested repayments
+  const totalSuggestedRepayments = suggestedRepayments.reduce((sum, val) => sum + (val || 0), 0);
+  const suggestedCashflows = [-investment, ...suggestedRepayments.filter(r => r !== null)];
+  
+  function npv(rate, cashflows) {
+    if (!cashflows.length) return 0;
+    return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
+  }
+  
+  const suggestedNpv = npv(discountRate / 100, suggestedCashflows);
+  
+  // Calculate payback period for suggested repayments
+  let suggestedPayback = null;
+  let cumulative = 0;
+  for (let i = 0; i < suggestedRepayments.length; i++) {
+    if (suggestedRepayments[i] > 0) {
+      cumulative += suggestedRepayments[i];
+      if (suggestedPayback === null && cumulative >= investment) {
+        suggestedPayback = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (npvElem) {
+    npvElem.textContent = isFinite(suggestedNpv) ? `€${suggestedNpv.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : 'n/a';
+  }
+  if (irrElem) {
+    irrElem.textContent = isFinite(achievedIRR) && !isNaN(achievedIRR) ? `${(achievedIRR * 100).toFixed(2)}%` : 'n/a';
+  }
+  if (repaymentsElem) {
+    repaymentsElem.textContent = `€${totalSuggestedRepayments.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  }
+  if (paybackElem) {
+    paybackElem.textContent = suggestedPayback !== null ? `${suggestedPayback} periods` : 'n/a';
+  }
+}
+
 // --- ROI input events ---
 document.getElementById('roiInvestmentInput').addEventListener('input', renderRoiSection);
 document.getElementById('roiInterestInput').addEventListener('input', renderRoiSection);
@@ -1200,27 +1269,52 @@ function suggestOptimalRepayments({
 
   function renderPaybackTableRows({repayments, suggestedRepayments, weekLabels, weekStartDates, tableBodyId}) {
     let html = '';
+    let actualCumulative = 0;
+    let suggestedCumulative = 0;
+    
     for (let i = 0; i < weekLabels.length; i++) {
       const actual = repayments[i] || 0;
-      const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : null;
-      let cellHtml = '';
-      if (suggested !== null && Math.abs(suggested - actual) < 0.01 && suggested !== 0) {
-        cellHtml = `<span style="color:#219653; font-weight:bold;">€${actual.toLocaleString()}</span>`;
-      } else if (suggested !== null && suggested !== 0) {
-        cellHtml = `<span style="color:#219653; font-weight:bold;">€${suggested.toLocaleString()}</span>`;
-        if (actual > 0) {
-          cellHtml += `<br><span style="color:#888;font-size:90%;">(Actual: €${actual.toLocaleString()})</span>`;
-        }
+      const suggested = suggestedRepayments && suggestedRepayments[i] ? suggestedRepayments[i] : 0;
+      
+      actualCumulative += actual;
+      suggestedCumulative += suggested;
+      
+      let repaymentCellHtml = '';
+      if (actual > 0 && suggested > 0) {
+        // Both values present - show actual prominently, suggested below
+        repaymentCellHtml = `
+          <div style="font-weight: bold; color: #1976d2; margin-bottom: 4px;">€${actual.toLocaleString()}</div>
+          <div style="color: #4caf50; font-size: 0.9em;">Suggested: €${suggested.toLocaleString()}</div>
+        `;
       } else if (actual > 0) {
-        cellHtml = `€${actual.toLocaleString()}`;
+        // Only actual value
+        repaymentCellHtml = `<span style="font-weight: bold; color: #1976d2;">€${actual.toLocaleString()}</span>`;
+      } else if (suggested > 0) {
+        // Only suggested value
+        repaymentCellHtml = `<span style="color: #4caf50; font-style: italic;">€${suggested.toLocaleString()} (suggested)</span>`;
       } else {
-        cellHtml = '';
+        repaymentCellHtml = '';
       }
+      
+      let cumulativeCellHtml = '';
+      if (actualCumulative > 0 && suggestedCumulative > 0) {
+        cumulativeCellHtml = `
+          <div style="font-weight: bold; color: #1976d2; margin-bottom: 4px;">€${actualCumulative.toLocaleString()}</div>
+          <div style="color: #4caf50; font-size: 0.9em;">€${suggestedCumulative.toLocaleString()}</div>
+        `;
+      } else if (actualCumulative > 0) {
+        cumulativeCellHtml = `<span style="font-weight: bold; color: #1976d2;">€${actualCumulative.toLocaleString()}</span>`;
+      } else if (suggestedCumulative > 0) {
+        cumulativeCellHtml = `<span style="color: #4caf50;">€${suggestedCumulative.toLocaleString()}</span>`;
+      }
+
       html += `
         <tr>
           <td>${weekLabels[i]}</td>
           <td>${weekStartDates && weekStartDates[i] ? weekStartDates[i].toLocaleDateString('en-GB') : '-'}</td>
-          <td style="text-align:right;">${cellHtml}</td>
+          <td style="text-align:right;">${repaymentCellHtml}</td>
+          <td style="text-align:right;">${cumulativeCellHtml}</td>
+          <td style="text-align:right;">--</td>
         </tr>
       `;
     }
@@ -1235,6 +1329,7 @@ function suggestOptimalRepayments({
     const investmentWeekIndex = parseInt(document.getElementById('investmentWeek').value, 10) || 0;
     const targetIRR = parseFloat(document.getElementById('roiTargetIrrInput').value) / 100;
     const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+    const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
     const { suggestedRepayments, achievedIRR } = suggestOptimalRepayments({
       investmentAmount: investment,
       investmentWeekIndex,
@@ -1254,9 +1349,8 @@ function suggestOptimalRepayments({
       tableBodyId: 'roiPaybackTableBody'
     });
 
-    const irrDisplay = document.getElementById('suggestedIrrResult');
-    if (irrDisplay)
-      irrDisplay.innerHTML = `Achievable IRR: <b>${(achievedIRR*100).toFixed(2)}%</b> ${Math.abs(achievedIRR - targetIRR) < 0.005 ? '<span class="badge badge-success">Target Met</span>' : '<span class="badge badge-warning">Best possible</span>'}`;
+    // Update the suggested results display in the summary card
+    updateSuggestedResultsDisplay(suggestedRepayments, achievedIRR, investment, discountRate);
   }
 
   // --- Wire up to button/input ---

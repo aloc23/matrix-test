@@ -162,16 +162,59 @@
 
         <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
       </div>
-      <div class="roi-controls" style="margin: 1em 0; padding: 1em; background: #f9f9f9; border-radius: 8px; display: flex; align-items: center; gap: 2em;">
-        <div>
-          <div><b>Actual IRR:</b> <span id="actualIrrResult">--</span></div>
-          <div><b>Total Repayments:</b> <span id="actualRepaymentsResult">--</span></div>
-        </div>
-        <div>
-          <label for="roiTargetIrrInput"><b>Set Target IRR (%):</b></label>
-          <input type="number" id="roiTargetIrrInput" value="12" min="0" max="100" step="0.1" style="width: 70px; margin-right: 12px;">
-          <button id="showSuggestedRepaymentsBtn" type="button">Show Suggested Repayments</button>
-          <span id="suggestedIrrResult" style="margin-left: 16px; font-weight: bold;"></span>
+      <!-- Enhanced ROI Summary Card -->
+      <div class="roi-summary-card" style="margin: 1.5em 0; padding: 1.5em; background: linear-gradient(135deg, #f8fbff 0%, #e3f2fd 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(25, 118, 210, 0.1); border: 1px solid #e3f2fd;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 2em; flex-wrap: wrap;">
+          <!-- Actual (Input) Results - More Prominent -->
+          <div class="actual-results" style="flex: 1; min-width: 300px; padding: 1em; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.15); border-left: 4px solid #1976d2;">
+            <h4 style="margin: 0 0 1em 0; color: #1976d2; font-size: 1.2em; font-weight: 700;">📊 Actual (Input) Results</h4>
+            <div class="metrics-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8em;">
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">NPV</div>
+                <div id="actualNpvResult" style="font-size: 1.3em; font-weight: bold; color: #1976d2;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">IRR</div>
+                <div id="actualIrrResult" style="font-size: 1.3em; font-weight: bold; color: #1976d2;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">Total Repayments</div>
+                <div id="actualRepaymentsResult" style="font-size: 1.3em; font-weight: bold; color: #1976d2;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">Payback Period</div>
+                <div id="actualPaybackResult" style="font-size: 1.3em; font-weight: bold; color: #1976d2;">--</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Suggested/Target (Optimized) Results -->
+          <div class="suggested-results" style="flex: 1; min-width: 300px; padding: 1em; background: #f8fffe; border-radius: 8px; border: 1px solid #e8f5e8; border-left: 4px solid #4caf50;">
+            <h4 style="margin: 0 0 1em 0; color: #4caf50; font-size: 1.1em; font-weight: 600;">🎯 Suggested/Target (Optimized)</h4>
+            <div style="margin-bottom: 1em;">
+              <label for="roiTargetIrrInput" style="color: #666; font-size: 0.9em;">Set Target IRR (%):</label>
+              <input type="number" id="roiTargetIrrInput" value="12" min="0" max="100" step="0.1" style="width: 70px; margin-left: 8px; border: 1px solid #ddd; border-radius: 4px; padding: 4px 8px;">
+              <button id="showSuggestedRepaymentsBtn" type="button" style="margin-left: 8px; padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; font-size: 0.9em;">Update</button>
+            </div>
+            <div class="metrics-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8em;">
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">NPV</div>
+                <div id="suggestedNpvResult" style="font-size: 1.1em; font-weight: 600; color: #4caf50;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">IRR</div>
+                <div id="suggestedIrrResult" style="font-size: 1.1em; font-weight: 600; color: #4caf50;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">Total Repayments</div>
+                <div id="suggestedRepaymentsResult" style="font-size: 1.1em; font-weight: 600; color: #4caf50;">--</div>
+              </div>
+              <div>
+                <div style="color: #666; font-size: 0.9em; margin-bottom: 4px;">Payback Period</div>
+                <div id="suggestedPaybackResult" style="font-size: 1.1em; font-weight: 600; color: #4caf50;">--</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <table class="table table-sm">
